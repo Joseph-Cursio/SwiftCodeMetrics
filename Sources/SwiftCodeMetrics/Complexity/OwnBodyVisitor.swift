@@ -67,6 +67,15 @@ class OwnBodyVisitor: SyntaxVisitor {
         node.parent?.is(PatternBindingSyntax.self) == true ? .skipChildren : .visitChildren
     }
 
+    /// A `#if` condition is a build setting, not run-time code (Spec §2.6):
+    /// only the clause's contents are walked.
+    override func visit(_ node: IfConfigClauseSyntax) -> SyntaxVisitorContinueKind {
+        if let elements = node.elements {
+            walk(elements)
+        }
+        return .skipChildren
+    }
+
     /// A global's initial value is not top-level code (Spec §2.1).
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         SyntaxFacts.isGlobal(node) ? .skipChildren : .visitChildren

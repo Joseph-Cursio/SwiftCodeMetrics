@@ -26,7 +26,19 @@ let kPackage = Package(
         .target(
             name: "SwiftCodeMetrics",
             dependencies: [
-                .product(name: "SwiftSyntax", package: "swift-syntax")
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftLexicalLookup", package: "swift-syntax")
+            ],
+            resources: [.copy("Resources/PlatformTable.json")],
+            swiftSettings: kSwiftSettings
+        ),
+        // Builds Resources/PlatformTable.json from the SDK (Spec §7.4). Not
+        // linked by the library; run it when the SDK changes.
+        .executableTarget(
+            name: "PlatformTableGenerator",
+            dependencies: [
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftParser", package: "swift-syntax")
             ],
             swiftSettings: kSwiftSettings
         ),

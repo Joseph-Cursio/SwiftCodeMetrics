@@ -18,4 +18,6 @@ struct RecordScope {
     let conditionDepth: Int
     /// The record's draft index; nil for a context that is not a record.
     let draftIndex: Int?
+    /// Generic parameters the record's declaration makes visible.
+    let genericParameters: [String]
 }

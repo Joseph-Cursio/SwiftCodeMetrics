@@ -1,0 +1,270 @@
+//
+//  FunctionResolver+Coupling.swift
+//  SwiftCodeMetrics
+//
+//  Common coupling (Spec §8.2), parameter counts (Spec §8.3) and resolved
+//  type references (Spec §7.3).
+//
+
+extension FunctionResolver {
+    /// What a parameter's type says about closures.
+    private enum ParameterClosure {
+        /// A closure that escapes.
+        case escaping
+        /// Not a closure.
+        case nonClosure
+        /// A closure that does not escape.
+        case nonEscaping
+    }
+
+    /// Globals, statics and singletons referenced.
+    func commonCoupling() -> CommonCoupling {
+        var tally = CouplingTally()
+        for name in raw.names {
+            countName(name, into: &tally)
+        }
+        for call in raw.calls {
+            if case .qualified(let base, _) = call.shape, base == [table.module],
+               let global = table.global(call.name, from: context.file) {
+                tally.addGlobal(global)
+            }
+            guard case .bare(let lookup) = call.shape else {
+                continue
+            }
+            switch resolveValue(call.name, lookup: lookup) {
+            case .global(let global):
+                tally.addGlobal(global)
+
+            case let .staticMember(owner, member)
+                where member.kind.isProperty && hasStaticMethod(call.name, labels: call.labels, on: owner) == false:
+                // `onSave()` calls a static closure property: a static reference.
+                tally.addStatic(owner: owner, member: member, kind: table.entries[owner]?.kind)
+
+            default:
+                break
+            }
+        }
+        for read in raw.memberReads {
+            countMemberRead(read, into: &tally)
+        }
+        return tally.result
+    }
+
+    /// The parameter counts, for records that carry them.
+    func parameterCounts() -> ParameterCounts? {
+        guard raw.carriesParameters else {
+            return nil
+        }
+        let parameters = raw.parameters
+        var counts = ParameterCounts(
+            parameterCount: parameters.count,
+            defaultedParameterCount: parameters.filter(\.hasDefault).count,
+            variadicParameterCount: parameters.filter(\.isVariadic).count,
+            inoutParameterCount: parameters.filter(\.isInout).count,
+            closureParameterCount: 0,
+            escapingClosureParameterCount: 0
+        )
+        for parameter in parameters {
+            switch closure(parameter.shape) {
+            case .escaping:
+                counts.closureParameterCount += 1
+                counts.escapingClosureParameterCount += 1
+
+            case .nonEscaping:
+                counts.closureParameterCount += 1
+
+            case .nonClosure:
+                break
+            }
+        }
+        return counts
+    }
+
+    /// The type references, resolved; generic parameters are dropped.
+    func typeReferences() -> [TypeReference] {
+        raw.typeNames.compactMap { name in
+            let resolution: TypeResolution
+            if name.qualifierMustBeModule, isModuleQualifier(name.type.moduleSelector) == false {
+                return nil
+            }
+            if name.isCandidate, name.type.moduleSelector == nil {
+                guard case .type(let resolved) = classifyCandidate(name.type.spelling, lookup: name.lookup) else {
+                    return nil
+                }
+                resolution = resolved
+            } else {
+                resolution = table.resolve(name.type, from: context)
+                // `Foundation.NSLog(...)`: a qualified free function, not a type.
+                if name.isCandidate, resolution.isPlatformType == false, resolution.isModuleType == false,
+                   isPlatformFreeFunction(name.type.spelling)
+                    || table.isFreeFunction(name.type.spelling, from: context.file) {
+                    return nil
+                }
+            }
+            return reference(name, resolution: resolution)
+        }
+    }
+
+    /// A reference from a resolution.
+    private func reference(_ name: RawTypeName, resolution: TypeResolution) -> TypeReference? {
+        var reference = name.unresolvedReference
+        switch resolution {
+        case .module(let key):
+            reference.bucket = .module
+            reference.target = key
+            reference.resolution = .exact
+
+        case .platform:
+            reference.bucket = .platform
+            reference.resolution = .exact
+
+        case .external:
+            reference.bucket = .external
+            reference.resolution = .approximate
+
+        case .ambiguous:
+            reference.resolution = .ambiguous
+
+        case .unresolved:
+            reference.resolution = .unresolved
+
+        case .genericParameter, .opaqueAlias:
+            return nil
+        }
+        return reference
+    }
+
+    /// Whether a parameter is a closure, and whether it escapes.
+    private func closure(_ shape: ClosureShape) -> ParameterClosure {
+        switch shape {
+        case .function(let escaping):
+            return escaping ? .escaping : .nonEscaping
+
+        case let .named(spelled, escaping):
+            // Expand module typealiases by the §7.3 order, one level at a
+            // time from each alias's own position; optionality anywhere escapes.
+            var visited: Set<String> = []
+            var current = (spelled: spelled, escaping: escaping, context: context)
+            while let alias = table.aliasTarget(for: current.spelled, from: current.context),
+                  visited.insert(alias.file + "|" + alias.typePath.joined(separator: ".") + "|" + alias.name).inserted {
+                switch alias.closure {
+                case .function(let escapes):
+                    return current.escaping || escapes ? .escaping : .nonEscaping
+
+                case let .named(next, escapes):
+                    current = (next, current.escaping || escapes, table.position(of: alias, from: current.context))
+
+                case .other:
+                    return .nonClosure
+                }
+            }
+            return .nonClosure
+
+        case .other:
+            return .nonClosure
+        }
+    }
+
+    /// A bare name: a global, or a bare static.
+    private func countName(_ name: RawName, into tally: inout CouplingTally) {
+        switch resolveValue(name.name, lookup: name.lookup) {
+        case .global(let global):
+            if name.isTypePosition == false || CalleeReader.startsUppercase(name.name) == false {
+                tally.addGlobal(global)
+            } else if case .global(let candidate) = classifyCandidate(name.name, lookup: name.lookup) {
+                tally.addGlobal(candidate)
+            }
+
+        case let .staticMember(owner, member):
+            if member.kind.isProperty {
+                tally.addStatic(owner: owner, member: member, kind: table.entries[owner]?.kind)
+            }
+
+        case .enumCase, .freeFunction, .inheritedMember, .notCoupling, .ownMember, .unresolved:
+            break
+        }
+    }
+
+    /// `Base.member` on a type, `Self` or this module.
+    private func countMemberRead(_ read: RawMemberRead, into tally: inout CouplingTally) {
+        guard Self.nonStaticMembers.contains(read.member) == false else {
+            return
+        }
+        if read.baseIsSelfType {
+            if let current = context.chain.first {
+                countStatic(read.member, on: current, into: &tally)
+            }
+            return
+        }
+        guard let root = read.base.first else {
+            return
+        }
+        if root.hasPrefix(Self.selectorMarker) {
+            countResolvedRead(read, into: &tally)
+            return
+        }
+        if root == table.module, read.base.count == 1 {
+            if let global = table.global(read.member, from: context.file) {
+                tally.addGlobal(global)
+            }
+            return
+        }
+        countTypeMemberRead(read, root: root, into: &tally)
+    }
+
+    /// `Base.member` whose root names a type or a module other than this one.
+    private func countTypeMemberRead(_ read: RawMemberRead, root: String, into tally: inout CouplingTally) {
+        switch resolveValue(root, lookup: read.rootLookup) {
+        case .enumCase, .global, .inheritedMember, .notCoupling, .ownMember, .staticMember:
+            return
+
+        case .freeFunction, .unresolved:
+            break
+        }
+        guard CalleeReader.startsUppercase(root) || context.knownModules.contains(root) else {
+            return
+        }
+        countResolvedRead(read, into: &tally)
+    }
+
+    /// `Base.member` on a base that resolves as a type.
+    private func countResolvedRead(_ read: RawMemberRead, into tally: inout CouplingTally) {
+        switch table.resolve(spelledBase(read.base), from: context) {
+        case .module(let key):
+            countStatic(read.member, on: key, into: &tally)
+
+        case .external(let name), .platform(let name):
+            if Self.externalSingletonNames.contains(read.member) {
+                tally.singletons.insert(name + "." + read.member)
+            }
+
+        case .ambiguous, .genericParameter, .opaqueAlias, .unresolved:
+            break
+        }
+    }
+
+    /// A static of a module type, or of its superclass chain.
+    private func countStatic(_ name: String, on key: TypeKey, into tally: inout CouplingTally) {
+        let matches = members(named: name, of: key)
+        guard let match = matches.first(where: { $0.member.isTypeLevel && $0.member.kind.isProperty }) else {
+            return
+        }
+        tally.addStatic(owner: match.owner, member: match.member, kind: table.entries[match.owner]?.kind)
+    }
+
+    /// Whether `qualifier` names a module, not a module type of the same name.
+    private func isModuleQualifier(_ qualifier: String?) -> Bool {
+        guard let qualifier, context.knownModules.contains(qualifier) else {
+            return false
+        }
+        let asType = table.resolve(SpelledType(components: [qualifier], moduleSelector: nil), from: context)
+        return asType.isModuleType == false
+    }
+
+    /// Whether `owner` declares a static method `name`, which a call would reach first.
+    private func hasStaticMethod(_ name: String, labels: [String], on owner: TypeKey) -> Bool {
+        members(named: name, of: owner).contains { match in
+            match.member.isTypeLevel && match.member.kind == .function && match.member.labels == labels
+        }
+    }
+}

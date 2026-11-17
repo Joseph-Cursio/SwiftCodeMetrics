@@ -15,4 +15,10 @@ struct TypeScope {
     let pathComponent: String
     /// Whether the type is `private` or `fileprivate`, directly or by nesting.
     let isFileScoped: Bool
+    /// The lexical path components it adds: its name, or an extension's extended type.
+    let nominal: [String]
+    /// Whether it is an extension.
+    let isExtension: Bool
+    /// Generic parameters and associated types it makes visible.
+    let genericParameters: [String]
 }

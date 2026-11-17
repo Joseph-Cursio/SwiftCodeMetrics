@@ -29,8 +29,26 @@ extension FunctionCollector {
                 recursion: RecursionMatcher(function: node, body: nodes),
                 hint: hint(attributes: [node.attributes], resultType: node.signature.returnClause?.type),
                 hasSyntaxErrors: node.hasError
+            ),
+            coupling: CouplingHead(
+                genericParameters: TypeSpelling.names(of: node.genericParameterClause),
+                isTypeLevel: SyntaxFacts.isTypeLevel(node.modifiers),
+                signature: CouplingHead.signature(of: node.signature.parameterClause.parameters)
+                    + CouplingHead.signature(
+                        generics: node.genericParameterClause,
+                        result: node.signature.returnClause?.type,
+                        whereClause: node.genericWhereClause
+                    ) + CouplingHead.thrownType(node.signature.effectSpecifiers?.throwsClause),
+                parameters: node.signature.parameterClause.parameters
             )
         )
+        if scopes.count == 1 {
+            declarations.freeFunctions.append(FreeFunctionFact(
+                name: SyntaxFacts.name(node.name),
+                file: context.file ?? "",
+                isFileScoped: SyntaxFacts.isFileScoped(node.modifiers)
+            ))
+        }
         return .visitChildren
     }
 
@@ -46,7 +64,18 @@ extension FunctionCollector {
                 isFileScoped: SyntaxFacts.isFileScoped(node.modifiers),
                 node: Syntax(node)
             ),
-            body: Syntax(body)
+            body: Syntax(body),
+            coupling: CouplingHead(
+                genericParameters: TypeSpelling.names(of: node.genericParameterClause),
+                isTypeLevel: false,
+                signature: CouplingHead.signature(of: node.signature.parameterClause.parameters)
+                    + CouplingHead.signature(
+                        generics: node.genericParameterClause,
+                        result: nil,
+                        whereClause: node.genericWhereClause
+                    ) + CouplingHead.thrownType(node.signature.effectSpecifiers?.throwsClause),
+                parameters: node.signature.parameterClause.parameters
+            )
         )
         return .visitChildren
     }
@@ -63,7 +92,8 @@ extension FunctionCollector {
                 isFileScoped: false,
                 node: Syntax(node)
             ),
-            body: Syntax(body)
+            body: Syntax(body),
+            coupling: .empty
         )
         return .visitChildren
     }
@@ -95,7 +125,8 @@ extension FunctionCollector {
                 recursion: nil,
                 hint: hint(attributes: [node.attributes], resultType: node.returnClause.type),
                 hasSyntaxErrors: node.hasError
-            )
+            ),
+            coupling: AccessorOwner.coupling(of: node, carriesParameters: true)
         )
         return .visitChildren
     }
@@ -127,6 +158,12 @@ extension FunctionCollector {
                     resultType: binding.typeAnnotation?.type
                 ),
                 hasSyntaxErrors: node.hasError
+            ),
+            coupling: CouplingHead(
+                genericParameters: [],
+                isTypeLevel: variable.map { SyntaxFacts.isTypeLevel($0.modifiers) } ?? false,
+                signature: binding.typeAnnotation.map { [Syntax($0.type)] } ?? [],
+                parameters: nil
             )
         )
         return .visitChildren
@@ -155,7 +192,8 @@ extension FunctionCollector {
                 recursion: nil,
                 hint: hint(attributes: [node.attributes] + owner.attributes, resultType: owner.resultType),
                 hasSyntaxErrors: node.hasError
-            )
+            ),
+            coupling: owner.coupling(for: node)
         )
         return .visitChildren
     }

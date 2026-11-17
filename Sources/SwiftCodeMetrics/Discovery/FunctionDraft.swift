@@ -23,4 +23,6 @@ struct FunctionDraft {
     let lines: LineRange?
     /// The scores.
     let complexity: ComplexityScores
+    /// The raw references; nil for records with no function-level coupling.
+    let raw: RawFunctionReferences?
 }

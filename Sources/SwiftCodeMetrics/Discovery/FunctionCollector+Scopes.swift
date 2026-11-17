@@ -27,9 +27,20 @@ extension FunctionCollector {
     }
 
     /// Opens a type scope.
-    func pushType(name: String, modifiers: DeclModifierListSyntax, owner: SyntaxIdentifier) {
-        let isFileScoped = SyntaxFacts.isFileScoped(modifiers)
-        scopes.append(.type(TypeScope(owner: owner, pathComponent: name, isFileScoped: isFileScoped)))
+    func pushType(
+        name: String,
+        modifiers: DeclModifierListSyntax,
+        owner: SyntaxIdentifier,
+        genericParameters: [String]
+    ) {
+        scopes.append(.type(TypeScope(
+            owner: owner,
+            pathComponent: name,
+            isFileScoped: SyntaxFacts.isFileScoped(modifiers),
+            nominal: [name],
+            isExtension: false,
+            genericParameters: genericParameters
+        )))
     }
 
     /// Opens an extension's scope: the extended type plus its `where` clause.
@@ -38,15 +49,39 @@ extension FunctionCollector {
         let whereClause = node.genericWhereClause.map { " " + CanonicalText.render($0) } ?? ""
         let isFileScoped = SyntaxFacts.isFileScoped(node.modifiers)
             || FileScopedTypes.isFileScoped(extended, in: fileScopedTypes)
-        let scope = TypeScope(owner: node.id, pathComponent: extended + whereClause, isFileScoped: isFileScoped)
-        scopes.append(.type(scope))
+        scopes.append(.type(TypeScope(
+            owner: node.id,
+            pathComponent: extended + whereClause,
+            isFileScoped: isFileScoped,
+            nominal: TypeSpelling.spelled(node.extendedType)?.components ?? [extended],
+            isExtension: true,
+            genericParameters: []
+        )))
     }
 
     /// Opens a key context that is not a record.
     func pushContext(declaration: String, isFileScoped: Bool, owner: SyntaxIdentifier) {
         let key = numbered(makeKey(declaration: declaration, isFileScoped: isFileScoped))
-        let scope = RecordScope(owner: owner, fullKey: key.full, conditionDepth: conditions.count, draftIndex: nil)
-        scopes.append(.record(scope))
+        scopes.append(.record(RecordScope(
+            owner: owner,
+            fullKey: key.full,
+            conditionDepth: conditions.count,
+            draftIndex: nil,
+            genericParameters: []
+        )))
+    }
+
+    /// Opens a key context for a freestanding macro that no record encloses.
+    func openMacroContext(name: String, owner: SyntaxIdentifier) {
+        let insideRecord = scopes.contains { scope in
+            if case .record = scope {
+                return true
+            }
+            return false
+        }
+        if insideRecord == false {
+            pushContext(declaration: "#" + name, isFileScoped: true, owner: owner)
+        }
     }
 
     /// Closes the innermost scope if `owner` opened it.
@@ -121,7 +156,9 @@ extension FunctionCollector {
     /// Opens the scope one ancestor of a seeded declaration contributes.
     private func seedScope(_ ancestor: Syntax) {
         if let type = ancestor.asProtocol(NamedDeclSyntax.self), let group = ancestor.asProtocol(DeclGroupSyntax.self) {
-            pushType(name: type.name.text, modifiers: group.modifiers, owner: ancestor.id)
+            let genericClause = ancestor.asProtocol(WithGenericParametersSyntax.self)?.genericParameterClause
+            let generics = TypeSpelling.names(of: genericClause)
+            pushType(name: type.name.text, modifiers: group.modifiers, owner: ancestor.id, genericParameters: generics)
         } else if let extensionDecl = ancestor.as(ExtensionDeclSyntax.self) {
             pushExtension(extensionDecl)
         } else if let clause = ancestor.as(IfConfigClauseSyntax.self) {

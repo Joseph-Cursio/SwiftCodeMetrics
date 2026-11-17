@@ -39,20 +39,26 @@ extension FunctionCollector {
         }
     }
 
-    /// Scores `body`, records it under the current scopes and opens its scope.
-    func addRecord(_ head: RecordHead, body: ScoredBody) {
-        addRecord(head, scores: scorer.score(body), owner: head.node.id, range: head.node)
+    /// Scores `body`, collects its raw references, records it under the
+    /// current scopes and opens its scope.
+    func addRecord(_ head: RecordHead, body: ScoredBody, coupling: CouplingHead) {
+        let raw = rawReferences(head: coupling, body: body.nodes)
+        addRecord(head, scores: scorer.score(body), raw: raw, range: head.node)
     }
 
     /// A record with no recursion check and no builder hint.
-    func addPlainRecord(_ head: RecordHead, body: Syntax) {
-        addRecord(head, body: ScoredBody(
-            nodes: [body],
-            kind: head.kind,
-            recursion: nil,
-            hint: nil,
-            hasSyntaxErrors: head.node.hasError
-        ))
+    func addPlainRecord(_ head: RecordHead, body: Syntax, coupling: CouplingHead) {
+        addRecord(
+            head,
+            body: ScoredBody(
+                nodes: [body],
+                kind: head.kind,
+                recursion: nil,
+                hint: nil,
+                hasSyntaxErrors: head.node.hasError
+            ),
+            coupling: coupling
+        )
     }
 
     /// A stored property's or global's initial value.
@@ -77,7 +83,7 @@ extension FunctionCollector {
             isFileScoped: isFileScoped,
             node: Syntax(binding)
         )
-        addRecord(head, scores: scores, owner: node.id, range: Syntax(binding))
+        addRecord(head, scores: scores, raw: nil, range: Syntax(binding), owner: node.id)
     }
 
     /// The file's `.topLevelCode` record, when it has top-level statements.
@@ -95,6 +101,7 @@ extension FunctionCollector {
             hint: nil,
             hasSyntaxErrors: code.contains(where: \.hasError)
         ))
+        let raw = rawReferences(head: .empty, body: statements.map(Syntax.init))
         let key = numbered(makeKey(declaration: "<top-level code>", isFileScoped: true))
         let start = first.positionAfterSkippingLeadingTrivia
         let end = last.endPositionBeforeTrailingTrivia
@@ -106,9 +113,16 @@ extension FunctionCollector {
             name: "<top-level code>",
             range: ByteRange(start: start.utf8Offset, end: end.utf8Offset),
             lines: lineRange(from: start, to: end),
-            complexity: scores
+            complexity: scores,
+            raw: raw
         ))
-        topLevelScope = RecordScope(owner: file.id, fullKey: key.full, conditionDepth: 0, draftIndex: drafts.count - 1)
+        topLevelScope = RecordScope(
+            owner: file.id,
+            fullKey: key.full,
+            conditionDepth: 0,
+            draftIndex: drafts.count - 1,
+            genericParameters: []
+        )
         topLevelStatements = Set(statements.map(\.id))
     }
 
@@ -121,8 +135,15 @@ extension FunctionCollector {
         )
     }
 
-    /// Records scored values and opens the record's scope.
-    private func addRecord(_ head: RecordHead, scores: ComplexityScores, owner: SyntaxIdentifier, range node: Syntax) {
+    /// Records scored values and opens the record's scope, owned by the
+    /// record's node unless `owner` says otherwise.
+    private func addRecord(
+        _ head: RecordHead,
+        scores: ComplexityScores,
+        raw: RawFunctionReferences?,
+        range node: Syntax,
+        owner: SyntaxIdentifier? = nil
+    ) {
         let parent = nearestRecord
         let key = numbered(makeKey(declaration: head.declaration, isFileScoped: head.isFileScoped))
         let start = node.positionAfterSkippingLeadingTrivia
@@ -135,13 +156,15 @@ extension FunctionCollector {
             name: head.name,
             range: ByteRange(start: start.utf8Offset, end: end.utf8Offset),
             lines: lineRange(from: start, to: end),
-            complexity: scores
+            complexity: scores,
+            raw: raw
         ))
         scopes.append(.record(RecordScope(
-            owner: owner,
+            owner: owner ?? node.id,
             fullKey: key.full,
             conditionDepth: conditions.count,
-            draftIndex: drafts.count - 1
+            draftIndex: drafts.count - 1,
+            genericParameters: raw?.context.genericParameters ?? []
         )))
     }
 

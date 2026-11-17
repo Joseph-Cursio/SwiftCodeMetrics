@@ -10,6 +10,11 @@ import SwiftSyntax
 
 /// Stateless facts about declarations and statements.
 enum SyntaxFacts {
+    /// A name without backticks: `` `default` `` is `default`, as a reference spells it.
+    static func name(_ token: TokenSyntax) -> String {
+        token.identifier?.name ?? token.text
+    }
+
     /// Whether the modifiers make a declaration `private` or `fileprivate`.
     /// `private(set)` restricts only the setter, so it doesn't count.
     static func isFileScoped(_ modifiers: DeclModifierListSyntax) -> Bool {
@@ -102,7 +107,18 @@ enum SyntaxFacts {
 
     /// Where a variable declaration sits.
     private static func placement(of variable: VariableDeclSyntax) -> Placement {
-        var node = variable.parent
+        placement(ofDeclaration: Syntax(variable))
+    }
+
+    /// Whether a declaration sits in a body or closure rather than at file
+    /// scope or in a member list, looking through `#if` clauses.
+    static func isLocal(_ declaration: Syntax) -> Bool {
+        placement(ofDeclaration: declaration) == .local
+    }
+
+    /// Where a declaration sits.
+    private static func placement(ofDeclaration declaration: Syntax) -> Placement {
+        var node = declaration.parent
         while let current = node {
             switch current.kind {
             case .codeBlockItem, .codeBlockItemList, .ifConfigClause, .ifConfigClauseList,

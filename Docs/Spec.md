@@ -2343,8 +2343,7 @@ public enum FunctionKind: String, Sendable, Codable {
     case topLevelCode               // file walker only (Q6)
 }
 
-public enum ResultBuilderHint: Sendable, Codable, Hashable {
-    case none
+public enum ResultBuilderHint: Sendable, Codable, Hashable {   // no hint is nil, not a `.none` case
     case attribute(String)          // last name component: "ViewBuilder" for @SwiftUI.ViewBuilder
     case opaqueResult(String)       // last name component of P in `some P`: "View", "Scene"
 }
@@ -2370,7 +2369,7 @@ public struct ComplexityScores: Sendable, Codable, Hashable {
     /// The highest level any construct gives its contents, closures and `defer` included.
     /// 0 for a body with no nesting construct; 1 for `if c {}`.
     public let maxNesting: Int
-    public let resultBuilderHint: ResultBuilderHint
+    public let resultBuilderHint: ResultBuilderHint?    // nil when the body isn't a builder body
     public let hasSyntaxErrors: Bool
 
     /// Every increment that contributed to any of the three scores.
@@ -3190,3 +3189,11 @@ Two independent checks of the merged text led to these changes. No worked-exampl
 - Part A: node-level irrefutable `for case` test (§4.2); `guard` exception in §3.1; complete anchors, `elseIf` for SL, no zero-amount `switchArms` (§13.3); folded-input roots, ternaries and casts (§3.5.1); parameter shadowing, own-body scope, operator-function wording and `possibleRecursion` scope (§3.4); `fallthrough` wording (rows 25–26, §4.2, §4.4); D's operator scan follows the `#if` rule (§3.5.3); all 17 accessor specifiers (§2.1); every `func` and `init` is a record, globals and statics get `.propertyInitializer`, `.topLevelCode` only with statements, one record order (§2.1, §13.1); trivial-switch and attribute-`#if` wording; column renamed in §3.5.2; `closureNesting` excludes `defer`; the labelled-jump rule case spelled `labeledJump`; probes moved into Appendix A.
 - Part B: leading underscores skipped in type-name candidates (§7.3); bare statics of the innermost type (§7.2, §7.5); public memberwise initialisers, `ExtensionFact`, `ConformanceFact`, `declarationTypeReferences` and name lists on `TypeResult`, `StoredLookupResult` (§13.5); dependency claims (§1.3, §13); §10.2 heading names its real metrics; `byReceiver` and the default diagnostic list (§8.1); extension merging moved to v0.2 (§16); `constraint` edge kind and the `isWeakOrUnowned` rule (§9.4); `typeCycles` versus `circularDependency` (§10.3, §14.4); `conformerCount` from conformances (§9.5); unproduced provenance case dropped and `moduleEdges` defined (§10.1); `ServerSocketChannel` wording; "would stay 2" (§12.6); exact greps (§7.4); nested-function calls excluded from fan-out (§8.1).
 - SE-0380 link corrected to `0380-if-switch-expressions.md`.
+
+### Changes made during the v0.1 implementation
+
+- `ResultBuilderHint` has no `.none` case; `ComplexityScores.resultBuilderHint` is optional, nil for no hint (§13.2). Why: SwiftLint's `discouraged_none_name`, since `.none` is easily read as `Optional.none`.
+- Camel-cased enum cases encode as snake_case strings (`computed_getter`, `labeled_jump`, `swift_lint`); single-word cases encode as their names. Swift code uses the case names as written in §13. Why: SwiftLint's `raw_value_for_camel_cased_codable_enum` and `redundant_string_enum_value` together require raw values that differ from the case name, and SwiftStats stores these values.
+- v0.1's `FunctionRecord` has the §13.2 fields up to `couplingStatus`; `parameters`, `fanOut`, `commonCoupling` and `typeReferences` arrive with v0.2. `MetricsOptions` holds `complexity` only until v0.2 and v0.3 add their options.
+- Readable names: a subscript's implicit getter is `subscript(_:).get`, a property's initial value `name.initializer`, and top-level code `<top-level code>`.
+

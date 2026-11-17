@@ -2,8 +2,8 @@
 //  SwiftCodeMetrics.swift
 //  SwiftCodeMetrics
 //
-//  The library's entry points (Spec §13.1). v0.1 has the function level:
-//  complexity for one declaration or one file.
+//  The library's entry points (Spec §13.1): complexity for one declaration
+//  or file, and function-level coupling for a whole module.
 //
 
 import SwiftSyntax
@@ -63,5 +63,64 @@ public enum SwiftCodeMetrics {
             options: options,
             functions: RecordOrdering.records(from: collector.drafts)
         )
+    }
+
+    // MARK: Type level: every file of one module
+
+    /// Runs the file pass on every file, in parallel, then the module pass (Spec §7.1),
+    /// finalising each function's fan-out, common coupling, parameter counts
+    /// and type references.
+    public static func analyzeModule(
+        _ module: ModuleInput,
+        options: MetricsOptions = .init(),
+        platformTable: PlatformTable = .bundled
+    ) -> ModuleAnalysis {
+        let files = FilePasses.run(module.files, module: module.name, options: options)
+        return analyzeModule(
+            name: module.name,
+            isTest: module.isTest,
+            files: files,
+            options: options,
+            platformTable: platformTable
+        )
+    }
+
+    /// Pass 1 alone: per file, safe to run in parallel, and cacheable.
+    /// Complexity is final here; coupling waits for the module pass.
+    public static func analyzeFile(
+        _ file: SourceFileInput,
+        module: String,
+        options: MetricsOptions = .init()
+    ) -> FileAnalysis {
+        let collector = FunctionCollector(context: CollectorContext(
+            module: module,
+            file: file.path,
+            converter: SourceLocationConverter(fileName: file.path, tree: file.tree),
+            options: options,
+            includesTopLevelCode: true
+        ))
+        collector.walk(file.tree)
+        let ordered = RecordOrdering.ordered(collector.drafts)
+        return FileAnalysis(
+            path: file.path,
+            functions: ordered.records,
+            rawReferences: RawReferences(functions: ordered.raw),
+            declarations: collector.declarations,
+            imports: collector.imports,
+            version: version,
+            options: options
+        )
+    }
+
+    /// Pass 2 over file passes the caller already has: the `FileAnalysis` of
+    /// every file in the module, made with the same options and version.
+    public static func analyzeModule(
+        name: String,
+        isTest: Bool,
+        files: [FileAnalysis],
+        options: MetricsOptions = .init(),
+        platformTable: PlatformTable = .bundled
+    ) -> ModuleAnalysis {
+        ModulePass.run(module: name, isTest: isTest, files: files, options: options, platform: platformTable)
     }
 }

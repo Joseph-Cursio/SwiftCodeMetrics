@@ -27,4 +27,13 @@ public struct ComplexityOptions: Sendable, Hashable, Codable {
     public init() {
         // Every property has a default.
     }
+
+    /// Encodes the protocol set sorted, so stored options are stable.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(swiftLintIgnoresCaseStatements, forKey: .swiftLintIgnoresCaseStatements)
+        try container.encode(detectRecursion, forKey: .detectRecursion)
+        try container.encode(decisionCountIgnoresTrivialSwitches, forKey: .decisionCountIgnoresTrivialSwitches)
+        try container.encode(opaqueResultBuilderProtocols.sorted(), forKey: .opaqueResultBuilderProtocols)
+    }
 }

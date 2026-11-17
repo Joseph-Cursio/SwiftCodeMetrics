@@ -21,6 +21,10 @@ final class FunctionCollector: SyntaxVisitor {
     var nestedKeyCounts: [String: Int] = [:]
     /// Types this file declares `private` or `fileprivate`.
     var fileScopedTypes: Set<String> = []
+    /// The file's declarations.
+    var declarations = DeclarationFacts()
+    /// The file's imports.
+    var imports: [ImportFact] = []
     /// The file's top-level-code record, if it has one.
     var topLevelScope: RecordScope?
     /// The top-level statements that record covers.
@@ -52,7 +56,7 @@ final class FunctionCollector: SyntaxVisitor {
     }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(name: node.name.text, modifiers: node.modifiers, owner: node.id)
+        openType(node, kind: .`struct`)
         return .visitChildren
     }
 
@@ -61,7 +65,7 @@ final class FunctionCollector: SyntaxVisitor {
     }
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(name: node.name.text, modifiers: node.modifiers, owner: node.id)
+        openType(node, kind: .`class`)
         return .visitChildren
     }
 
@@ -70,7 +74,7 @@ final class FunctionCollector: SyntaxVisitor {
     }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(name: node.name.text, modifiers: node.modifiers, owner: node.id)
+        openType(node, kind: .`enum`)
         return .visitChildren
     }
 
@@ -79,7 +83,7 @@ final class FunctionCollector: SyntaxVisitor {
     }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(name: node.name.text, modifiers: node.modifiers, owner: node.id)
+        openType(node, kind: .actor)
         return .visitChildren
     }
 
@@ -88,7 +92,7 @@ final class FunctionCollector: SyntaxVisitor {
     }
 
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(name: node.name.text, modifiers: node.modifiers, owner: node.id)
+        openType(node, kind: .`protocol`)
         return .visitChildren
     }
 
@@ -97,7 +101,7 @@ final class FunctionCollector: SyntaxVisitor {
     }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushExtension(node)
+        openExtension(node)
         return .visitChildren
     }
 
@@ -115,7 +119,8 @@ final class FunctionCollector: SyntaxVisitor {
                 owner: node.id,
                 fullKey: topLevelScope.fullKey,
                 conditionDepth: 0,
-                draftIndex: topLevelScope.draftIndex
+                draftIndex: topLevelScope.draftIndex,
+                genericParameters: []
             )))
         }
         return .visitChildren
@@ -189,6 +194,49 @@ final class FunctionCollector: SyntaxVisitor {
 
     override func visitPost(_ node: AccessorDeclSyntax) {
         popScope(owner: node.id)
+    }
+
+    // MARK: - Macros
+
+    /// A freestanding macro outside any record, such as `#Preview { ... }`,
+    /// is a key context: types declared in its closures are local to it.
+    override func visit(_ node: MacroExpansionExprSyntax) -> SyntaxVisitorContinueKind {
+        openMacroContext(name: node.macroName.text, owner: node.id)
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: MacroExpansionExprSyntax) {
+        popScope(owner: node.id)
+    }
+
+    override func visit(_ node: MacroExpansionDeclSyntax) -> SyntaxVisitorContinueKind {
+        openMacroContext(name: node.macroName.text, owner: node.id)
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: MacroExpansionDeclSyntax) {
+        popScope(owner: node.id)
+    }
+
+    // MARK: - Declarations
+
+    override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
+        if SyntaxFacts.isGlobal(node) {
+            recordGlobal(node)
+        }
+        return .visitChildren
+    }
+
+    override func visit(_ node: TypeAliasDeclSyntax) -> SyntaxVisitorContinueKind {
+        if scopes.isEmpty {
+            recordTypealias(node)
+        }
+        return .skipChildren
+    }
+
+    override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
+        recordImport(node)
+        return .skipChildren
     }
 
     // MARK: - #if

@@ -10,10 +10,10 @@
 public struct MetricsVersion: Sendable, Codable, Hashable {
     /// This build's versions.
     public static let current = Self(
-        library: "0.1.0",
+        library: "0.2.0",
         swiftSyntax: "603.0.2",
         complexityDefinition: "complexity-1",
-        couplingDefinition: nil,
+        couplingDefinition: "coupling-1",
         platformTable: nil,
         swiftLintReference: "0.65.1"
     )
@@ -24,10 +24,22 @@ public struct MetricsVersion: Sendable, Codable, Hashable {
     public let swiftSyntax: String
     /// The complexity definition version (Spec Q4).
     public let complexityDefinition: String
-    /// The coupling definition version; nil before v0.2.
+    /// The coupling definition version.
     public let couplingDefinition: String?
     /// The SDK version the platform table came from; nil when no table was used.
     public let platformTable: String?
     /// The SwiftLint release the SwiftLint-compatible count was checked against.
     public let swiftLintReference: String
+
+    /// This version, reporting the platform table a module pass used.
+    func using(platformTable table: String) -> Self {
+        Self(
+            library: library,
+            swiftSyntax: swiftSyntax,
+            complexityDefinition: complexityDefinition,
+            couplingDefinition: couplingDefinition,
+            platformTable: table,
+            swiftLintReference: swiftLintReference
+        )
+    }
 }

@@ -26,7 +26,8 @@ let kPackage = Package(
         .target(
             name: "SwiftCodeMetrics",
             dependencies: [
-                .product(name: "SwiftSyntax", package: "swift-syntax")
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftLexicalLookup", package: "swift-syntax")
             ],
             resources: [.copy("Resources/PlatformTable.json")],
             swiftSettings: kSwiftSettings

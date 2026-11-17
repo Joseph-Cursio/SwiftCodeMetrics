@@ -10,6 +10,11 @@
 enum RecordOrdering {
     /// The records of `drafts`, in record order.
     static func records(from drafts: [FunctionDraft]) -> [FunctionRecord] {
+        ordered(drafts).records
+    }
+
+    /// The records of `drafts` in record order, with their raw references.
+    static func ordered(_ drafts: [FunctionDraft]) -> (records: [FunctionRecord], raw: [RawFunctionReferences?]) {
         var children: [Int?: [Int]] = [:]
         for (index, draft) in drafts.enumerated() {
             children[draft.parentDraft, default: []].append(index)
@@ -24,7 +29,7 @@ enum RecordOrdering {
         for (id, index) in order.enumerated() {
             ids[index] = id
         }
-        return order.enumerated().map { id, index in
+        let records = order.enumerated().map { id, index in
             let draft = drafts[index]
             return FunctionRecord(
                 id: id,
@@ -36,9 +41,16 @@ enum RecordOrdering {
                 range: draft.range,
                 lines: draft.lines,
                 complexity: draft.complexity,
-                couplingStatus: draft.kind == .propertyInitializer ? .notApplicableKind : .needsModulePass
+                couplingStatus: draft.kind == .propertyInitializer ? .notApplicableKind : .needsModulePass,
+                parameters: nil,
+                fanOut: nil,
+                commonCoupling: nil,
+                typeReferences: draft.raw?.typeNames
+                    .filter { $0.isCandidate == false }
+                    .map(\.unresolvedReference) ?? []
             )
         }
+        return (records, order.map { drafts[$0].raw })
     }
 
     /// Sibling indices by start offset, then visit order.

@@ -1,0 +1,435 @@
+== DecisionCountCheck.swift
+0 function probe(_:) parent=-
+  key Lib::func probe(_: Int) -> Int
+  C 5 D 8 SL 5 maxNesting 1 hint none
+  cognitive guard_statement 1 @2:5
+  cognitive condition_list 1 @2:30
+  cognitive loop 1 @3:5
+  cognitive switch_statement 1 @4:5
+  cognitive ternary 1 @9:18
+  decision guard_statement 1 @2:5
+  decision condition_element 1 @2:30
+  decision loop 1 @3:5
+  decision where_clause 1 @3:21
+  decision switch_arms 2 @4:5
+  decision where_clause 1 @6:12
+  decision ternary 1 @9:18
+  swift_lint guard_statement 1 @2:5
+  swift_lint loop 1 @3:5
+  swift_lint switch_case 1 @5:5
+  swift_lint switch_case 1 @6:5
+  swift_lint switch_case 1 @7:5
+
+== Example6_1.swift
+0 function validate(_:) parent=-
+  key Lib::func validate(_: SignUpForm) throws -> Account
+  C 6 D 6 SL 3 maxNesting 1 hint none
+  cognitive guard_statement 1 @2:5
+  cognitive condition_list 1 @2:31
+  cognitive guard_statement 1 @5:5
+  cognitive condition_list 1 @5:33
+  cognitive guard_statement 1 @8:5
+  cognitive logical_sequence 1 @8:26
+  decision guard_statement 1 @2:5
+  decision condition_element 1 @2:31
+  decision guard_statement 1 @5:5
+  decision condition_element 1 @5:33
+  decision guard_statement 1 @8:5
+  decision logical_operator 1 @8:26
+  swift_lint guard_statement 1 @2:5
+  swift_lint guard_statement 1 @5:5
+  swift_lint guard_statement 1 @8:5
+
+== Example6_10.swift
+0 function depth(of:) parent=-
+  key Lib::func depth(of: TreeNode?) -> Int
+  C 2 D 1 SL 1 maxNesting 1 hint none
+  cognitive guard_statement 1 @2:5
+  cognitive recursion 1 @3:20
+  decision guard_statement 1 @2:5
+  swift_lint guard_statement 1 @2:5
+
+== Example6_11.swift
+0 function loadConfig(from:attempt:) parent=-
+  key Lib::func loadConfig(from: URL, attempt: Int) -> Config
+  C 6 D 5 SL 4 maxNesting 2 hint none
+  cognitive catch_clause 1 @5:7
+  cognitive catch_clause 1 @7:7
+  cognitive catch_clause 1 @9:7
+  cognitive if_statement 2 @10:9 nesting 1 closures 0
+  cognitive recursion 1 @11:20
+  decision catch_clause 1 @5:7
+  decision where_clause 1 @5:40
+  decision catch_clause 1 @7:7
+  decision catch_clause 1 @9:7
+  decision if_statement 1 @10:9
+  swift_lint catch_clause 1 @5:7
+  swift_lint catch_clause 1 @7:7
+  swift_lint catch_clause 1 @9:7
+  swift_lint if_statement 1 @10:9
+
+== Example6_12.swift
+0 function refresh() parent=-
+  key Lib::func refresh() async
+  C 4 D 2 SL 2 maxNesting 3 hint none
+  cognitive catch_clause 1 @8:7
+  cognitive if_statement 3 @10:13 nesting 2 closures 1
+  decision catch_clause 1 @8:7
+  decision if_statement 1 @10:13
+  swift_lint catch_clause 1 @8:7
+  swift_lint if_statement 1 @10:13
+
+== Example6_13.swift
+0 function shippingCost(for:) parent=-
+  key Lib::func shippingCost(for: Order) -> Decimal
+  C 4 D 4 SL 4 maxNesting 1 hint none
+  cognitive switch_statement 1 @2:25
+  cognitive if_statement 1 @7:28
+  cognitive else_clause 1 @7:54
+  cognitive ternary 1 @8:30
+  decision switch_arms 2 @2:25
+  decision if_statement 1 @7:28
+  decision ternary 1 @8:30
+  swift_lint switch_case 1 @3:5
+  swift_lint switch_case 1 @4:5
+  swift_lint switch_case 1 @5:5
+  swift_lint if_statement 1 @7:28
+
+== Example6_14.swift
+0 function defaultLevel(verbose:) parent=-
+  key Lib::func defaultLevel(verbose: Bool) -> LogLevel
+  C 6 D 1 SL 2 maxNesting 2 hint none
+  cognitive conditional_compilation 1 @2:5
+  cognitive if_statement 2 @3:5 nesting 1 closures 0
+  cognitive conditional_compilation_else 1 @5:5
+  cognitive if_statement 2 @6:5 nesting 1 closures 0
+  decision if_statement 1 @3:5
+  swift_lint if_statement 1 @3:5
+  swift_lint if_statement 1 @6:5
+
+== Example6_15.swift
+0 function priority(of:) parent=-
+  key Lib::func priority(of: Int) -> Int
+  C 2 D 3 SL 3 maxNesting 1 hint none
+  cognitive switch_statement 1 @3:5
+  cognitive fallthrough_jump 1 @6:9
+  decision switch_arms 3 @3:5
+  swift_lint switch_case 1 @4:5
+  swift_lint fallthrough_statement -1 @6:9
+  swift_lint switch_case 1 @7:5
+  swift_lint switch_case 1 @9:5
+  swift_lint fallthrough_statement -1 @10:9
+  swift_lint switch_case 1 @11:5
+  swift_lint switch_case 1 @13:5
+
+== Example6_16.swift
+0 function render(_:) parent=-
+  key Lib::func render(_: [Row]) -> String
+  C 0 D 0 SL 0 maxNesting 1 hint none
+1 function cell(_:) parent=0
+  key Lib::func render(_: [Row]) -> String / func cell(_: Int?) -> String
+  C 2 D 2 SL 1 maxNesting 1 hint none
+  cognitive guard_statement 1 @3:9
+  cognitive ternary 1 @4:26
+  decision guard_statement 1 @3:9
+  decision ternary 1 @4:26
+  swift_lint guard_statement 1 @3:9
+
+== Example6_17.swift
+0 function firstValidToken(in:strict:) parent=-
+  key Lib::func firstValidToken(in: [String], strict: Bool) -> Token?
+  C 8 D 6 SL 5 maxNesting 3 hint none
+  cognitive loop 1 @2:5
+  cognitive guard_statement 1 @3:9
+  cognitive guard_statement 1 @4:9
+  cognitive if_statement 3 @5:13 nesting 2 closures 0
+  cognitive guard_statement 1 @10:9
+  cognitive logical_sequence 1 @10:30
+  decision loop 1 @2:5
+  decision guard_statement 1 @3:9
+  decision guard_statement 1 @4:9
+  decision if_statement 1 @5:13
+  decision guard_statement 1 @10:9
+  decision logical_operator 1 @10:30
+  swift_lint loop 1 @2:5
+  swift_lint guard_statement 1 @3:9
+  swift_lint guard_statement 1 @4:9
+  swift_lint if_statement 1 @5:13
+  swift_lint guard_statement 1 @10:9
+
+== Example6_18.swift
+0 function shouldSyncA(_:now:) parent=-
+  key Lib::func shouldSyncA(_: Item, now: Date) -> Bool
+  C 3 D 5 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @2:5
+  cognitive condition_list 1 @2:20
+  cognitive logical_sequence 1 @2:36
+  decision if_statement 1 @2:5
+  decision condition_element 3 @2:20
+  decision logical_operator 1 @2:36
+  swift_lint if_statement 1 @2:5
+1 function shouldSyncB(_:now:) parent=-
+  key Lib::func shouldSyncB(_: Item, now: Date) -> Bool
+  C 3 D 5 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @9:5
+  cognitive condition_list 1 @9:20
+  cognitive logical_sequence 1 @9:74
+  decision if_statement 1 @9:5
+  decision condition_element 3 @9:20
+  decision logical_operator 1 @9:74
+  swift_lint if_statement 1 @9:5
+
+== Example6_2.swift
+0 function label(for:) parent=-
+  key Lib::func label(for: Subscription.Status) -> String
+  C 1 D 4 SL 4 maxNesting 1 hint none
+  cognitive switch_statement 1 @2:5
+  decision switch_arms 3 @2:5
+  decision where_clause 1 @5:33
+  swift_lint switch_case 1 @3:5
+  swift_lint switch_case 1 @5:5
+  swift_lint switch_case 1 @7:5
+  swift_lint switch_case 1 @9:5
+
+== Example6_3.swift
+0 function firstMatch(in:equalTo:) parent=-
+  key Lib::func firstMatch(in: [[Int]], equalTo: Int) -> (row: Int, col: Int)?
+  C 7 D 3 SL 3 maxNesting 3 hint none
+  cognitive loop 1 @3:12
+  cognitive loop 2 @4:9 nesting 1 closures 0
+  cognitive if_statement 3 @5:13 nesting 2 closures 0
+  cognitive labeled_jump 1 @7:17
+  decision loop 1 @3:12
+  decision loop 1 @4:9
+  decision if_statement 1 @5:13
+  swift_lint loop 1 @3:12
+  swift_lint loop 1 @4:9
+  swift_lint if_statement 1 @5:13
+
+== Example6_4.swift
+0 function displayName(for:) parent=-
+  key Lib::func displayName(for: User?) -> String
+  C 4 D 4 SL 2 maxNesting 1 hint none
+  cognitive if_statement 1 @2:5
+  cognitive condition_list 1 @2:16
+  cognitive else_if 1 @4:12
+  cognitive else_clause 1 @6:7
+  decision if_statement 1 @2:5
+  decision condition_element 2 @2:16
+  decision else_if 1 @4:12
+  swift_lint if_statement 1 @2:5
+  swift_lint else_if 1 @4:12
+
+== Example6_5.swift
+0 function cityLabel(for:) parent=-
+  key Lib::func cityLabel(for: Order?) -> String
+  C 0 D 1 SL 0 maxNesting 0 hint none
+  decision nil_coalescing 1 @4:17
+
+== Example6_6.swift
+0 function timeout(override:environment:config:) parent=-
+  key Lib::func timeout(override: Int?, environment: [String: String], config: Config?) -> Int
+  C 0 D 3 SL 0 maxNesting 0 hint none
+  decision nil_coalescing 1 @3:9
+  decision nil_coalescing 1 @4:9
+  decision nil_coalescing 1 @5:9
+
+== Example6_7.swift
+0 function canEdit(_:_:) parent=-
+  key Lib::func canEdit(_: User, _: Document) -> Bool
+  C 6 D 6 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @2:5
+  cognitive logical_sequence 1 @4:9
+  cognitive logical_sequence 1 @4:40
+  cognitive logical_sequence 1 @5:9
+  cognitive logical_sequence 1 @5:30
+  cognitive logical_sequence 1 @5:48
+  decision if_statement 1 @2:5
+  decision logical_operator 1 @4:9
+  decision logical_operator 1 @4:40
+  decision logical_operator 1 @5:9
+  decision logical_operator 1 @5:30
+  decision logical_operator 1 @5:48
+  swift_lint if_statement 1 @2:5
+
+== Example6_8.swift
+0 function verifiedEmails(in:) parent=-
+  key Lib::func verifiedEmails(in: [Team]) -> [String]
+  C 4 D 2 SL 1 maxNesting 3 hint none
+  cognitive guard_statement 1 @6:17
+  cognitive ternary 3 @7:45 nesting 2 closures 2
+  decision guard_statement 1 @6:17
+  decision ternary 1 @7:45
+  swift_lint guard_statement 1 @6:17
+
+== Example6_9.swift
+0 computed_getter body.get parent=-
+  key Lib::var body: some View { get }
+  C 10 D 3 SL 3 maxNesting 5 hint opaqueResult("View")
+  cognitive if_statement 2 @3:9 nesting 1 closures 1
+  cognitive else_clause 1 @5:11
+  cognitive if_statement 5 @9:21 nesting 4 closures 3
+  cognitive if_statement 2 @17:9 nesting 1 closures 1
+  decision if_statement 1 @3:9
+  decision if_statement 1 @9:21
+  decision if_statement 1 @17:9
+  swift_lint if_statement 1 @3:9
+  swift_lint if_statement 1 @9:21
+  swift_lint if_statement 1 @17:9
+
+== SwiftLintProbe1.swift
+0 function outer(_:) parent=-
+  key Lib::func outer(_: [Int]) -> Int
+  C 2 D 1 SL 6 maxNesting 2 hint none
+  cognitive if_statement 2 @11:18 nesting 1 closures 1
+  decision if_statement 1 @11:18
+  swift_lint if_statement 1 @3:22
+  swift_lint if_statement 1 @4:36
+  swift_lint if_statement 1 @5:18
+  swift_lint if_statement 1 @9:22
+  swift_lint if_statement 1 @10:28
+  swift_lint if_statement 1 @11:18
+1 computed_getter v.get parent=0
+  key Lib::func outer(_: [Int]) -> Int / Local::var v: Int { get }
+  C 2 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @3:22
+  cognitive else_clause 1 @3:40
+  decision if_statement 1 @3:22
+  swift_lint if_statement 1 @3:22
+2 subscript_getter subscript(_:).get parent=0
+  key Lib::func outer(_: [Int]) -> Int / Local::subscript(_: Int) -> Int
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @4:36
+  decision if_statement 1 @4:36
+  swift_lint if_statement 1 @4:36
+3 deinitializer deinit parent=0
+  key Lib::func outer(_: [Int]) -> Int / Local::deinit
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @5:18
+  decision if_statement 1 @5:18
+  swift_lint if_statement 1 @5:18
+4 function m() parent=0
+  key Lib::func outer(_: [Int]) -> Int / Local::func m()
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @6:20
+  decision if_statement 1 @6:20
+  swift_lint if_statement 1 @6:20
+5 initializer init() parent=0
+  key Lib::func outer(_: [Int]) -> Int / Local::init()
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @7:18
+  decision if_statement 1 @7:18
+  swift_lint if_statement 1 @7:18
+6 computed_getter local.get parent=0
+  key Lib::func outer(_: [Int]) -> Int / var local: Int { get }
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @9:22
+  decision if_statement 1 @9:22
+  swift_lint if_statement 1 @9:22
+7 accessor obs.didSet parent=0
+  key Lib::func outer(_: [Int]) -> Int / var obs { didSet }
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @10:28
+  decision if_statement 1 @10:28
+  swift_lint if_statement 1 @10:28
+8 computed_getter g.get parent=-
+  key Lib::S::var g: Int { get }
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @15:18
+  decision if_statement 1 @15:18
+  swift_lint if_statement 1 @15:18
+9 accessor h.get parent=-
+  key Lib::S::var h: Int { get }
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @16:24
+  decision if_statement 1 @16:24
+  swift_lint if_statement 1 @16:24
+10 accessor h.set parent=-
+  key Lib::S::var h: Int { set }
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @16:60
+  decision if_statement 1 @16:60
+  swift_lint if_statement 1 @16:60
+11 deinitializer deinit parent=-
+  key Lib::S::deinit
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @17:14
+  decision if_statement 1 @17:14
+  swift_lint if_statement 1 @17:14
+12 subscript_getter subscript(_:).get parent=-
+  key Lib::S::subscript(_: Int) -> Int
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @18:32
+  decision if_statement 1 @18:32
+  swift_lint if_statement 1 @18:32
+13 function q(_:) parent=-
+  key Lib::func q(_: [Int?])
+  C 8 D 11 SL 3 maxNesting 1 hint none
+  cognitive loop 1 @21:5
+  cognitive logical_sequence 1 @21:39
+  cognitive if_statement 1 @22:5
+  cognitive logical_sequence 1 @22:10
+  cognitive logical_sequence 1 @22:15
+  cognitive condition_list 1 @22:19
+  cognitive loop 1 @24:5
+  cognitive condition_list 1 @24:28
+  decision loop 1 @21:5
+  decision for_case_pattern 1 @21:9
+  decision where_clause 1 @21:27
+  decision logical_operator 1 @21:39
+  decision if_statement 1 @22:5
+  decision logical_operator 1 @22:10
+  decision logical_operator 1 @22:15
+  decision condition_element 1 @22:19
+  decision nil_coalescing 1 @23:15
+  decision loop 1 @24:5
+  decision condition_element 1 @24:28
+  swift_lint loop 1 @21:5
+  swift_lint if_statement 1 @22:5
+  swift_lint loop 1 @24:5
+14 function noCases(_:) parent=-
+  key Lib::func noCases(_: Never)
+  C 1 D 0 SL 0 maxNesting 0 hint none
+  cognitive switch_statement 1 @26:28
+
+== SwiftLintProbe2.swift
+0 function a1() parent=-
+  key Lib::func a1() -> Int
+  C 0 D 0 SL 2 maxNesting 0 hint none
+  swift_lint if_statement 1 @3:24
+  swift_lint if_statement 1 @5:22
+1 property_initializer x.initializer parent=0
+  key Lib::func a1() -> Int / L::var x: Int = <initializer>
+  C 2 D 1 SL 1 maxNesting 2 hint none
+  cognitive if_statement 2 @3:24 nesting 1 closures 1
+  decision if_statement 1 @3:24
+  swift_lint if_statement 1 @3:24
+2 computed_getter y.get parent=0
+  key Lib::func a1() -> Int / L::var y: Int { get } #if DEBUG
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive if_statement 1 @5:22
+  decision if_statement 1 @5:22
+  swift_lint if_statement 1 @5:22
+3 function a2(_:) parent=-
+  key Lib::func a2(_: [(Int, Int)])
+  C 1 D 1 SL 1 maxNesting 1 hint none
+  cognitive loop 1 @11:5
+  decision loop 1 @11:5
+  swift_lint loop 1 @11:5
+4 function a3(_:) parent=-
+  key Lib::func a3(_: Int) -> Int
+  C 4 D 2 SL 4 maxNesting 2 hint none
+  cognitive switch_statement 1 @14:5
+  cognitive conditional_compilation 2 @15:5 nesting 1 closures 0
+  cognitive conditional_compilation_else 1 @18:5
+  decision switch_arms 2 @14:5
+  swift_lint switch_case 1 @16:5
+  swift_lint switch_case 1 @17:5
+  swift_lint switch_case 1 @19:5
+  swift_lint switch_case 1 @21:5
+5 function a4(_:) parent=-
+  key Lib::func a4(_: Int) -> Int
+  C 0 D 0 SL 0 maxNesting 0 hint none
+6 function inner(_:) parent=5
+  key Lib::func a4(_: Int) -> Int / func inner(_: Int) -> Int
+  C 0 D 0 SL 0 maxNesting 0 hint none

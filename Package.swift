@@ -29,6 +29,16 @@ let kPackage = Package(
                 .product(name: "SwiftSyntax", package: "swift-syntax")
             ],
             swiftSettings: kSwiftSettings
+        ),
+        .testTarget(
+            name: "SwiftCodeMetricsTests",
+            dependencies: [
+                "SwiftCodeMetrics",
+                .product(name: "SwiftParser", package: "swift-syntax"),
+                .product(name: "SwiftOperators", package: "swift-syntax")
+            ],
+            resources: [.copy("Fixtures"), .copy("Golden")],
+            swiftSettings: kSwiftSettings
         )
     ]
 )

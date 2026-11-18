@@ -111,7 +111,8 @@ extension TypePass {
             case .protocol:
                 edgeKind = owner.kind == .protocol ? .refinement : .conformance
 
-            case .class where owner.kind == .class:
+            case .class where owner.kind == .class || owner.kind == .protocol:
+                // A superclass, or a protocol's class constraint.
                 edgeKind = .inheritance
 
             case .actor, .class, .enum, .extensionGroup, .struct:

@@ -213,7 +213,8 @@ struct TypeDeclarationAccumulator {
         }
         let wrappers = TypeDeclarationReader.customAttributes(variable.attributes)
         for attribute in SyntaxFacts.attributes(variable.attributes)
-        where attribute.attributeName.trimmedDescription.first?.isUppercase == true {
+        where attribute.attributeName.trimmedDescription.first?.isUppercase == true
+            && CompilerAttributes.names.contains(attribute.attributeName.trimmedDescription) == false {
             collect(Syntax(attribute.attributeName), kind: .wrapper, isWeakOrUnowned: false)
         }
         let shared = Self.sharedAnnotations(bindings)

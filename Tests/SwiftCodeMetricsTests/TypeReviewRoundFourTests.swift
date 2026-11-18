@@ -152,4 +152,25 @@ struct TypeReviewRoundFourTests {
         #expect(screen.ambiguousTypeRefs.isEmpty)
         #expect(Modules.targets(of: screen, in: analysis) == ["Config", "Model", "Other", "ThemeConfig"])
     }
+
+    @Test("an inheritance clause resolves outside the type's body")
+    func inheritanceClauseScope() throws {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            class Base {}
+            protocol Delegate {}
+            class Outer: Base, Delegate {
+                class Base {}
+                protocol Delegate {}
+            }
+            struct Plain: Delegate {}
+            """)
+        ])
+        let outer = try #require(Modules.type("Outer", in: analysis))
+
+        #expect(outer.superclass?.path == ["Base"])
+        #expect(Modules.targets(of: outer, in: analysis) == ["Base", "Delegate"])
+        #expect(Modules.type("Delegate", in: analysis)?.protocolFacts?.conformerCount == 2)
+        #expect(Modules.type("Outer.Delegate", in: analysis)?.protocolFacts?.conformerCount == 0)
+    }
 }

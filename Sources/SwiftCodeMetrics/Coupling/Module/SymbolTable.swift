@@ -84,8 +84,10 @@ final class SymbolTable {
         }
         superclassMemo[key] = []
         var chain: [TypeKey] = []
-        if let entry = entries[key], entry.kind == .class, let first = entry.inherited.first,
-           let parent = moduleClass(first, from: declarationContext(of: key)), parent != key {
+        let context = declarationContext(of: key)
+        if let entry = entries[key], entry.kind == .class,
+           let parent = firstEntry(of: entry).lazy.compactMap({ self.moduleClass($0, from: context) }).first,
+           parent != key {
             chain = [parent] + superclasses(of: parent).filter { $0 != key }
         }
         superclassMemo[key] = chain

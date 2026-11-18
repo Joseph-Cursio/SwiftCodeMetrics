@@ -77,15 +77,14 @@ extension TypePass {
         return FunctionResolver(table: table, raw: raw, imports: importsByFile[context.file] ?? [], options: options)
     }
 
-    /// Conformances from an inheritance clause; a class's first entry is
-    /// skipped when it is its superclass or possible superclass (Spec §9.1).
+    /// Conformances from an inheritance clause; a class's superclass is
+    /// taken out first, by withoutSuperclass (Spec §9.1).
     func conformances(
         _ inherited: [RawInherited],
         resolver: FunctionResolver,
-        isConditional: Bool,
-        skipsFirst: Bool
+        isConditional: Bool
     ) -> [ConformanceFact] {
-        inherited.dropFirst(skipsFirst ? 1 : 0).flatMap { entry -> [ConformanceFact] in
+        inherited.flatMap { entry -> [ConformanceFact] in
             guard let type = entry.type else {
                 return [ConformanceFact(name: entry.name, target: nil, isConditional: isConditional)]
             }
@@ -144,6 +143,21 @@ extension TypePass {
                 return nil
             }
             return tagged
+        }
+    }
+
+    /// A class's inherited names without its superclass: the first name
+    /// when it can be one, or the module class anywhere in a first-entry
+    /// composition, so `class Card: Themed & Base` conforms to Themed.
+    func withoutSuperclass(_ inherited: [RawInherited], resolver: FunctionResolver) -> [RawInherited] {
+        guard inherited.filter({ $0.entry == 0 }).count > 1 else {
+            return isPossibleSuperclass(inherited.first, resolver: resolver) ? Array(inherited.dropFirst()) : inherited
+        }
+        return inherited.filter { name in
+            guard name.entry == 0, let type = name.type else {
+                return true
+            }
+            return table.moduleClass(type, from: resolver.context) == nil
         }
     }
 

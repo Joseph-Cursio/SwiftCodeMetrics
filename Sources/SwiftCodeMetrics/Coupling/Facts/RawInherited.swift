@@ -11,4 +11,6 @@ struct RawInherited: Codable, Hashable {
     var name: String
     /// The name as a type, when it is a plain or member type.
     var type: SpelledType?
+    /// The written entry it comes from: `Themed & Base` is one entry, two names.
+    var entry = 0
 }

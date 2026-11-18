@@ -29,6 +29,9 @@ struct TypeFact: Codable, Hashable {
     var associatedTypes: [String]
     /// The inherited types, in order.
     var inherited: [SpelledType]
+    /// How many of `inherited` the first written entry names: two for
+    /// `class Card: Themed & Base`, any of which can be the superclass.
+    var firstEntryCount = 1
     /// Members declared in the primary declaration.
     var members: [MemberFact]
     /// Member typealiases.

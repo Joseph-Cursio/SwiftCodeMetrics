@@ -28,6 +28,7 @@ extension FunctionCollector {
         )
         let isFileScoped = SyntaxFacts.isFileScoped(node.modifiers) || lexical.isFileScoped
         let inherited = node.inheritanceClause?.inheritedTypes.flatMap { TypeSpelling.spelledMembers($0.type) } ?? []
+        let firstEntry = node.inheritanceClause?.inheritedTypes.first.map { TypeSpelling.spelledMembers($0.type) } ?? []
         declarations.types.append(TypeFact(
             path: path,
             extensionPathLength: lexical.extensionPathLength,
@@ -40,6 +41,7 @@ extension FunctionCollector {
             genericParameters: generics,
             associatedTypes: facts.associatedTypes,
             inherited: inherited,
+            firstEntryCount: firstEntry.count,
             members: facts.members,
             typealiases: facts.typealiases,
             declaration: TypeDeclarationReader.read(node, writtenName: node.name.text)

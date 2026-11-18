@@ -85,4 +85,22 @@ struct TypeReviewRoundSixTests {
         #expect(unresolved.unresolvedExtensions.map(\.extendedType) == ["Outer.Config.State"])
         #expect(Modules.type("Base.Config.State", in: unresolved)?.extensions.isEmpty == true)
     }
+
+    @Test("a module class anywhere in a first-entry composition is the superclass")
+    func compositionSuperclasses() throws {
+        let analysis = Modules.analysis("App", [
+            ("Card.swift", """
+            protocol Themed {}
+            class Base { var tint = 0 }
+            class Card: Themed & Base {
+                func paint() { tint += 1 }
+            }
+            """)
+        ])
+        let card = try #require(Modules.type("Card", in: analysis))
+
+        #expect(card.superclass?.path == ["Base"])
+        #expect(card.conformances.map(\.name) == ["Themed"])
+        #expect(card.cohesion.attributeCount == 1)
+    }
 }

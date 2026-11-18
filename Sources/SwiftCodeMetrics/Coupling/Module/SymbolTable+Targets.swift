@@ -29,6 +29,12 @@ extension SymbolTable {
         )
     }
 
+    /// The names of a type's first inheritance entry, where a superclass is written.
+    func firstEntry(of entry: TypeEntry) -> ArraySlice<SpelledType> {
+        let declaration = entry.declarations.first { $0.inherited == entry.inherited }
+        return entry.inherited.prefix(max(1, declaration?.firstEntryCount ?? 1))
+    }
+
     /// The module type an extension extends, if the table has it yet.
     func target(of fact: ExtensionDeclFact) -> TypeKey? {
         type(atPath: fact.extended.extensionPath(in: module), from: fact.file, localOwners: [])

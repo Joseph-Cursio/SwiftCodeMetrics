@@ -66,9 +66,13 @@ struct TypeDeclarationAccumulator {
     /// The inheritance clause: names for conformances, and type names, each
     /// tagged with its entry so generic arguments take the entry's kind.
     mutating func readInheritance(_ clause: InheritanceClauseSyntax?) {
-        for entry in clause?.inheritedTypes ?? [] {
+        for (position, entry) in (clause?.inheritedTypes ?? []).enumerated() {
             for type in Self.split(entry.type) {
-                inherited.append(RawInherited(name: CanonicalText.render(type), type: TypeSpelling.spelled(type)))
+                inherited.append(RawInherited(
+                    name: CanonicalText.render(type),
+                    type: TypeSpelling.spelled(type),
+                    entry: position
+                ))
                 let first = typeNames.count
                 collect(Syntax(type), kind: .inheritance, isWeakOrUnowned: false)
                 for index in typeNames.indices.dropFirst(first) {

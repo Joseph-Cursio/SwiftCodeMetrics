@@ -68,8 +68,7 @@ struct TypePass {
                 extensionFact(fact, conformances: conformances(
                     fact.declaration.inherited,
                     resolver: resolver(for: fact),
-                    isConditional: fact.declaration.isConstrained,
-                    skipsFirst: false
+                    isConditional: fact.declaration.isConstrained
                 ))
             }
         )
@@ -129,12 +128,11 @@ struct TypePass {
             let site = DeclarationSite(owner: entry, isExtension: false, clauseResolver: clause)
             let resolver = resolver(for: fact)
             declarationReferences += add(fact.declaration, at: site, resolver: resolver, index: index, into: &edges)
+            let inherited = fact.declaration.inherited
             conformances += self.conformances(
-                fact.declaration.inherited,
+                entry.kind == .class ? withoutSuperclass(inherited, resolver: clause) : inherited,
                 resolver: clause,
-                isConditional: false,
-                skipsFirst: entry.kind == .class
-                    && isPossibleSuperclass(fact.declaration.inherited.first, resolver: clause)
+                isConditional: false
             )
         }
         for fact in entry.extensionFacts {
@@ -146,8 +144,7 @@ struct TypePass {
             let own = self.conformances(
                 fact.declaration.inherited,
                 resolver: resolver,
-                isConditional: fact.declaration.isConstrained || isBoundAlias,
-                skipsFirst: false
+                isConditional: fact.declaration.isConstrained || isBoundAlias
             )
             conformances += own
             extensions.append(extensionFact(fact, conformances: own))

@@ -17,4 +17,11 @@ struct SpelledType: Codable, Hashable {
     var spelling: String {
         components.joined(separator: ".")
     }
+
+    /// The path an extension of this name is keyed by: a `Module::` selector
+    /// becomes a leading component, so `extension Swift::Result` keys like
+    /// `extension Swift.Result`.
+    var extensionPath: [String] {
+        (moduleSelector.map { [$0] } ?? []) + components
+    }
 }

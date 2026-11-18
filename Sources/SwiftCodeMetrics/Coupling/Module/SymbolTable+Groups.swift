@@ -19,7 +19,11 @@ extension SymbolTable {
         case .external(let name), .platform(let name):
             canonical = name.split(separator: ".").map(String.init)
 
-        case .ambiguous, .genericParameter, .module, .opaqueAlias, .unresolved:
+        case .module(let key):
+            // A module type nested in a group: `extension Celsius.Unit` where Unit sits under Double.
+            return key.path
+
+        case .ambiguous, .genericParameter, .opaqueAlias, .unresolved:
             break
         }
         return visible(byPath[canonical] ?? [], from: file).isEmpty ? canonical : components
@@ -45,7 +49,7 @@ extension SymbolTable {
     }
 
     /// File scope, with every platform and imported module known as a qualifier.
-    private func qualifierContext(file: String) -> ResolutionContext {
+    func qualifierContext(file: String) -> ResolutionContext {
         ResolutionContext(
             file: file,
             knownModules: importedModules.union(PlatformModules.harvested).union([module]),

@@ -126,7 +126,8 @@ struct TypePass {
         var extensions: [ExtensionFact] = []
         for fact in entry.declarations {
             let resolver = resolver(for: fact)
-            declarationReferences += add(fact.declaration, resolver: resolver, owner: entry, index: index, into: &edges)
+            let site = DeclarationSite(owner: entry, isExtension: false)
+            declarationReferences += add(fact.declaration, at: site, resolver: resolver, index: index, into: &edges)
             conformances += self.conformances(
                 fact.declaration.inherited,
                 resolver: resolver,
@@ -137,9 +138,10 @@ struct TypePass {
         }
         for fact in entry.extensionFacts {
             let resolver = resolver(for: fact)
-            declarationReferences += add(fact.declaration, resolver: resolver, owner: entry, index: index, into: &edges)
+            let site = DeclarationSite(owner: entry, isExtension: true)
+            declarationReferences += add(fact.declaration, at: site, resolver: resolver, index: index, into: &edges)
             // `extension IntBox: P` where `IntBox = Box<Int>` is constrained too.
-            let isBoundAlias = table.aliasTarget(for: fact.extended, from: resolver.context)?.isBoundGeneric == true
+            let isBoundAlias = table.reachesBoundGeneric(fact.extended, from: resolver.context)
             let own = self.conformances(
                 fact.declaration.inherited,
                 resolver: resolver,
@@ -154,11 +156,7 @@ struct TypePass {
                 edges.add(reference, kind: reference.edgeKind, isWeakOrUnowned: false, familyOf: index.familyRoot(of:))
             }
         }
-        let primaryInherited = entry.declarations.first?.declaration.inherited.first
-        let primaryResolver = entry.declarations.first.map(resolver(for:))
-        let isPossible = entry.kind == .class
-            && primaryResolver.map { isPossibleSuperclass(primaryInherited, resolver: $0) } == true
-        let superclass = table.superclasses(of: key).first
+        let (superclass, possibleSuperclass) = superclassFacts(of: key, entry: entry)
         return TypeDraft(
             key: key,
             entry: entry,
@@ -168,33 +166,47 @@ struct TypePass {
             conformances: conformances.uniqued(),
             extensions: extensions,
             superclass: superclass,
-            possibleSuperclass: isPossible && superclass == nil ? primaryInherited?.name : nil
+            possibleSuperclass: possibleSuperclass
         )
+    }
+
+    /// The in-module superclass, or else the first inherited name when it
+    /// could be a superclass the module does not declare (Spec §9.1).
+    private func superclassFacts(of key: TypeKey, entry: TypeEntry) -> (TypeKey?, String?) {
+        let primaryInherited = entry.declarations.first?.declaration.inherited.first
+        let primaryResolver = entry.declarations.first.map(resolver(for:))
+        let isPossible = entry.kind == .class
+            && primaryResolver.map { isPossibleSuperclass(primaryInherited, resolver: $0) } == true
+        let superclass = table.superclasses(of: key).first
+        return (superclass, isPossible && superclass == nil ? primaryInherited?.name : nil)
     }
 
     /// Resolves a declaration's type names into `edges`, returning the references.
     private func add(
         _ declaration: TypeDeclarationFacts,
+        at site: DeclarationSite,
         resolver: FunctionResolver,
-        owner: TypeEntry,
         index: TypeIndex,
         into edges: inout TypeEdges
     ) -> [TypeReference] {
+        let owner = site.owner
         var entryKinds: [Int: EdgeKind] = [:]
         var references: [TypeReference] = []
         for name in declaration.typeNames {
             guard let reference = resolver.typeReference(for: name) else {
-                // `struct Client: Services` where `Services = Fetching & Caching`.
-                if name.edgeKind == .inheritance {
-                    for member in compositionMembers(of: name, resolver: resolver, owner: owner) {
-                        edges.add(
-                            member,
-                            kind: member.edgeKind,
-                            isWeakOrUnowned: false,
-                            familyOf: index.familyRoot(of:)
-                        )
-                        references.append(member)
-                    }
+                // `struct Client: Services` where `Services = Fetching & Caching`;
+                // elsewhere, `let deps: Services` names each member with its own kind.
+                let members = name.edgeKind == .inheritance
+                    ? compositionMembers(of: name, resolver: resolver, owner: owner)
+                    : resolver.expandedReferences(for: name)
+                for member in members {
+                    edges.add(
+                        member,
+                        kind: member.edgeKind,
+                        isWeakOrUnowned: name.isWeakOrUnowned,
+                        familyOf: index.familyRoot(of:)
+                    )
+                    references.append(member)
                 }
                 continue
             }
@@ -202,7 +214,7 @@ struct TypePass {
             if kind == .inheritance {
                 // The entry's first name decides the kind of its generic arguments too.
                 kind = name.inheritanceEntry.flatMap { entryKinds[$0] }
-                    ?? inheritanceKind(of: reference, owner: owner)
+                    ?? inheritanceKind(of: reference, site: site, entry: name.inheritanceEntry ?? 0)
                 if let entry = name.inheritanceEntry, entryKinds[entry] == nil {
                     entryKinds[entry] = kind
                 }
@@ -217,18 +229,25 @@ struct TypePass {
 
     /// The kind an inheritance-clause entry gives: refinement or conformance
     /// for a protocol target, inheritance for anything else.
-    private func inheritanceKind(of reference: TypeReference, owner: TypeEntry) -> EdgeKind {
-        // A protocol inherits only protocols: `protocol Store: Collection<Item>`.
+    private func inheritanceKind(of reference: TypeReference, site: DeclarationSite, entry: Int) -> EdgeKind {
+        let owner = site.owner
+        if let target = reference.target {
+            guard table.entries[target]?.kind == .protocol else {
+                // `protocol Themed: BaseView` constrains to a class: inheritance.
+                return .inheritance
+            }
+            return owner.kind == .protocol ? .refinement : .conformance
+        }
+        // Otherwise a protocol inherits protocols: `protocol Store: Collection<Item>`.
         if owner.kind == .protocol {
             return .refinement
-        }
-        if let target = reference.target {
-            return table.entries[target]?.kind == .protocol ? .conformance : .inheritance
         }
         let lastName = reference.spelling.split(separator: ".").last.map(String.init) ?? reference.spelling
         let isPlatformProtocol = reference.bucket == .platform
             && (table.platform.protocols.contains(reference.spelling) || table.platform.protocols.contains(lastName))
-        return isPlatformProtocol || owner.kind != .class ? .conformance : .inheritance
+        // Only a class's first entry can be a superclass; an extension's entries are protocols.
+        let canBeSuperclass = owner.kind == .class && site.isExtension == false && entry == 0
+        return isPlatformProtocol || canBeSuperclass == false ? .conformance : .inheritance
     }
 
     /// How a `ce` target is classified (Spec §9.4).

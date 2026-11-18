@@ -82,7 +82,25 @@ extension FunctionResolver {
 
     /// The type references, resolved; generic parameters are dropped.
     func typeReferences() -> [TypeReference] {
-        raw.typeNames.compactMap(typeReference(for:))
+        raw.typeNames.flatMap(expandedReferences(for:))
+    }
+
+    /// One type name's references: the name itself, or each type a typealias
+    /// composition stands for (`let deps: Dependencies` where
+    /// `Dependencies = HasAPI & HasStore`), as if the composition were written.
+    func expandedReferences(for name: RawTypeName) -> [TypeReference] {
+        if let reference = typeReference(for: name) {
+            return [reference]
+        }
+        guard name.isCandidate == false, name.qualifierMustBeModule == false,
+              case .opaqueAlias = table.resolve(name.type, from: context) else {
+            return []
+        }
+        return table.compositionLeaves(of: name.type, from: context).compactMap { leaf in
+            var member = name
+            member.type = leaf.type
+            return reference(member, resolution: table.resolve(leaf.type, from: leaf.position))
+        }
     }
 
     /// One type name, resolved; nil for generic parameters and names that

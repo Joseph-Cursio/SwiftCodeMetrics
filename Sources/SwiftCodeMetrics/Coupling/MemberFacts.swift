@@ -53,13 +53,15 @@ struct MemberFacts {
         localTo: MemberKey?
     ) -> TypealiasFact {
         let target = alias.initializer.value
+        let parameters = TypeSpelling.names(of: alias.genericParameterClause)
+        let hasArguments = target.tokens(viewMode: .sourceAccurate).contains { token in
+            [.leftAngle, .leftSquare, .postfixQuestionMark].contains(token.tokenKind)
+        }
         return TypealiasFact(
             name: SyntaxFacts.name(alias.name),
             target: TypeSpelling.spelled(target),
             compositionMembers: TypeSpelling.compositionMembers(target),
-            isBoundGeneric: target.tokens(viewMode: .sourceAccurate).contains { token in
-                [.leftAngle, .leftSquare, .postfixQuestionMark].contains(token.tokenKind)
-            },
+            isBoundGeneric: hasArguments && TypeSpelling.isPassThrough(target, parameters: parameters) == false,
             closure: TypeSpelling.closureShape(target),
             typePath: typePath,
             file: file,

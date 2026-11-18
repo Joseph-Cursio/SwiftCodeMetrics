@@ -6,7 +6,7 @@
 //
 
 /// The kind of a type declaration.
-enum TypeKind: String, Codable {
+public enum TypeKind: String, Sendable, Codable, Hashable {
     /// `class`.
     case `class`
     /// `enum`.

@@ -10,12 +10,15 @@
 /// Options for every metric family.
 public struct MetricsOptions: Sendable, Hashable, Codable {
     private enum CodingKeys: String, CodingKey {
+        case cohesion
         case complexity
         case diagnosticFreeFunctions
     }
 
     /// Options for Part A.
     public var complexity = ComplexityOptions()
+    /// Options for the cohesion metric (Spec §9.3).
+    public var cohesion = CohesionOptions()
     /// Free functions left out of fan-out when the module does not declare them (Spec §8.1).
     public var diagnosticFreeFunctions: Set<String> = [
         "assert", "assertionFailure", "debugPrint", "dump", "fatalError", "precondition",
@@ -32,6 +35,7 @@ public struct MetricsOptions: Sendable, Hashable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = Self()
         complexity = try container.decodeIfPresent(ComplexityOptions.self, forKey: .complexity) ?? defaults.complexity
+        cohesion = try container.decodeIfPresent(CohesionOptions.self, forKey: .cohesion) ?? defaults.cohesion
         diagnosticFreeFunctions = try container.decodeIfPresent(Set<String>.self, forKey: .diagnosticFreeFunctions)
             ?? defaults.diagnosticFreeFunctions
     }
@@ -39,6 +43,7 @@ public struct MetricsOptions: Sendable, Hashable, Codable {
     /// Encodes the function set sorted, so stored options are stable.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(cohesion, forKey: .cohesion)
         try container.encode(complexity, forKey: .complexity)
         try container.encode(diagnosticFreeFunctions.sorted(), forKey: .diagnosticFreeFunctions)
     }

@@ -286,11 +286,15 @@ extension SymbolTable {
         for key in chain {
             generics.formUnion(entries[key]?.genericParameters ?? [])
         }
+        // Module qualifiers in the target are the alias file's: `typealias Plot = Charts.Chart`.
+        let imported = importsByFile[alias.file]
+        let importsXCTest = imported.map { $0.contains(PlatformModules.xcTest) } ?? context.importsXCTest
         return ResolutionContext(
             file: alias.file,
-            knownModules: context.knownModules,
-            importsXCTest: context.importsXCTest,
-            importsFoundation: context.importsFoundation,
+            knownModules: imported.map { $0.union(PlatformModules.harvested).union([module]) } ?? context.knownModules,
+            importsXCTest: importsXCTest,
+            importsFoundation: imported.map { $0.isDisjoint(with: PlatformModules.foundationExporters) == false }
+                ?? context.importsFoundation,
             chain: chain,
             genericParameters: generics,
             localOwners: localOwners

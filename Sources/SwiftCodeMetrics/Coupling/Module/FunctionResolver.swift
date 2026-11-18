@@ -122,7 +122,8 @@ struct FunctionResolver {
 
     /// Classifies an uppercase name in expression position (Spec §7.3).
     func classifyCandidate(_ name: String, lookup: [StoredLookupResult]) -> CandidateClass {
-        guard context.knownModules.contains(name) == false else {
+        // A module name, unless a module type of that name shadows it: `Shop.Item()` in Shop.
+        if context.knownModules.contains(name), isModuleQualifier(name) {
             return .notCandidate
         }
         let value = resolveValue(name, lookup: lookup)

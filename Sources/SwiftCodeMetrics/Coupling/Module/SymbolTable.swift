@@ -40,6 +40,8 @@ final class SymbolTable {
     private(set) var macroNames: Set<String> = []
     /// Every module some file imports, for module qualifiers on extensions.
     private(set) var importedModules: Set<String> = []
+    /// Each file's imported modules, for the typealiases it declares.
+    private(set) var importsByFile: [String: Set<String>] = [:]
     /// Superclass chains already computed.
     private var superclassMemo: [TypeKey: [TypeKey]] = [:]
     /// Resolved type paths, per file.
@@ -71,6 +73,7 @@ final class SymbolTable {
             }
             macroNames.formUnion(file.declarations.macroNames)
             importedModules.formUnion(file.imports.map(\.module))
+            importsByFile[file.path, default: []].formUnion(file.imports.map(\.module))
         }
         mergeExtensions(types: pendingTypes, extensions: pendingExtensions)
     }

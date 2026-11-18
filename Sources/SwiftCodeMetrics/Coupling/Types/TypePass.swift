@@ -197,14 +197,14 @@ struct TypePass {
                 let members = name.edgeKind == .inheritance
                     ? compositionMembers(of: name, resolver: nameResolver, owner: owner)
                     : nameResolver.expandedReferences(for: name)
+                // A generic argument of an entry takes the entry's kind: `BaseViewModel<any Deps>`.
+                let entryKind = name.inheritanceEntry.flatMap { entryKinds[$0] }
                 for member in members {
-                    edges.add(
-                        member,
-                        kind: member.edgeKind,
-                        isWeakOrUnowned: name.isWeakOrUnowned,
-                        familyOf: index.familyRoot(of:)
-                    )
-                    references.append(member)
+                    var tagged = member
+                    tagged.edgeKind = entryKind ?? member.edgeKind
+                    let isWeak = name.isWeakOrUnowned
+                    edges.add(tagged, kind: tagged.edgeKind, isWeakOrUnowned: isWeak, familyOf: index.familyRoot(of:))
+                    references.append(tagged)
                 }
                 continue
             }
@@ -240,9 +240,12 @@ struct TypePass {
         if owner.kind == .protocol {
             return .refinement
         }
-        let lastName = reference.spelling.split(separator: ".").last.map(String.init) ?? reference.spelling
+        // `Key` where `typealias Key = Hashable` resolves to the protocol.
+        let names = [reference.spelling, reference.resolvedName ?? reference.spelling].flatMap { name in
+            [name, name.split(separator: ".").last.map(String.init) ?? name]
+        }
         let isPlatformProtocol = reference.bucket == .platform
-            && (table.platform.protocols.contains(reference.spelling) || table.platform.protocols.contains(lastName))
+            && names.contains(where: table.platform.protocols.contains)
         // Only a class's first entry can be a superclass; an extension's entries are protocols.
         let canBeSuperclass = owner.kind == .class && site.isExtension == false && entry == 0
         return isPlatformProtocol || canBeSuperclass == false ? .conformance : .inheritance

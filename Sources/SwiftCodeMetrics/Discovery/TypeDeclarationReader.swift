@@ -35,7 +35,7 @@ enum TypeDeclarationReader {
             whereClause: node.genericWhereClause.map { CanonicalText.render($0) },
             isConstrained: node.genericWhereClause != nil || Self.hasGenericArguments(node),
             customAttributes: ownAttributes,
-            attachedAttributeNames: ownAttributes + reader.memberAttributes,
+            attachedAttributeNames: attributeNames(node.attributes) + reader.memberAttributes,
             inherited: reader.inherited,
             caseNames: reader.caseNames,
             storedProperties: reader.storedProperties,
@@ -53,6 +53,12 @@ enum TypeDeclarationReader {
         return extended.tokens(viewMode: .sourceAccurate).contains { token in
             token.tokenKind == .leftAngle || token.tokenKind == .leftSquare || token.tokenKind == .postfixQuestionMark
         }
+    }
+
+    /// Every attribute name, any case, for matching module macros:
+    /// `@registerAll` can name an attached macro the module declares.
+    static func attributeNames(_ attributes: AttributeListSyntax) -> [String] {
+        SyntaxFacts.attributes(attributes).map(\.attributeName.trimmedDescription)
     }
 
     /// Attribute names that are not built in: written with an uppercase

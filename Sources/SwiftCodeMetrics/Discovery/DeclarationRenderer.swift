@@ -72,6 +72,17 @@ enum DeclarationRenderer {
         return prefix + specifier + " " + CanonicalText.render(binding.pattern) + type + " = <initializer>"
     }
 
+    /// The key context for a member variable's attribute arguments:
+    /// `var volume: Int <attributes>`.
+    static func attributeContext(_ variable: VariableDeclSyntax) -> String {
+        let bindings = variable.bindings.map { binding in
+            let type = binding.typeAnnotation.map { ": " + CanonicalText.render($0.type) } ?? ""
+            return CanonicalText.render(binding.pattern) + type
+        }
+        return typeLevelPrefix(variable.modifiers) + variable.bindingSpecifier.text + " "
+            + bindings.joined(separator: ", ") + " <attributes>"
+    }
+
     /// `<owner> { <accessor> }`, for example `var count: Int { get }`.
     static func accessor(owner: String, kind: String) -> String {
         owner.isEmpty ? "{ \(kind) }" : "\(owner) { \(kind) }"

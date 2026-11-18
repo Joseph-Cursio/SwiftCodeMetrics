@@ -173,4 +173,36 @@ struct TypeReviewRoundFourTests {
         #expect(Modules.type("Delegate", in: analysis)?.protocolFacts?.conformerCount == 2)
         #expect(Modules.type("Outer.Delegate", in: analysis)?.protocolFacts?.conformerCount == 0)
     }
+
+    @Test("lowercase module macros are known; functions in wrapper arguments are not members")
+    func macrosAndWrapperArguments() {
+        let analysis = Modules.analysis("Lib", [
+            ("Macros.swift", """
+            @attached(member, names: arbitrary)
+            public macro registerAll() = #externalMacro(module: "MacrosImpl", type: "RegisterAll")
+            """),
+            ("Model.swift", """
+            @registerAll
+            struct Model {
+                var name = ""
+                func describe() -> String { name }
+            }
+            @propertyWrapper
+            struct Clamped {
+                var wrappedValue: Int
+                init(wrappedValue: Int, _ limit: () -> Int) { self.wrappedValue = wrappedValue }
+            }
+            struct Settings {
+                @Clamped({
+                    func cap() -> Int { 10 }
+                    return cap()
+                }) var volume: Int = 3
+                func reset() {}
+            }
+            """)
+        ])
+
+        #expect(Modules.type("Model", in: analysis)?.hasKnownAttachedMacro == true)
+        #expect(Modules.type("Settings", in: analysis)?.sizes.nom == 1)
+    }
 }

@@ -151,6 +151,24 @@ final class FunctionCollector: SyntaxVisitor {
         popScope(owner: node.id)
     }
 
+    /// A member variable's attribute arguments (`@Clamped({ ... })`) are a
+    /// key context, like an initial value: functions in them are not members.
+    override func visit(_ node: AttributeListSyntax) -> SyntaxVisitorContinueKind {
+        if let variable = node.parent?.as(VariableDeclSyntax.self), SyntaxFacts.isMemberOrGlobal(variable),
+           isInsideRecordScope == false, node.contains(where: { $0.as(AttributeSyntax.self)?.arguments != nil }) {
+            pushContext(
+                declaration: DeclarationRenderer.attributeContext(variable),
+                isFileScoped: SyntaxFacts.isFileScoped(variable.modifiers),
+                owner: node.id
+            )
+        }
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: AttributeListSyntax) {
+        popScope(owner: node.id)
+    }
+
     // MARK: - Records
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {

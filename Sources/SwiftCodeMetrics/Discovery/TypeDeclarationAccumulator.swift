@@ -21,7 +21,7 @@ struct TypeDeclarationAccumulator {
     private(set) var hasInstanceMembers = false
     /// Type names, tagged with their edge kinds.
     private(set) var typeNames: [RawTypeName] = []
-    /// Custom attributes on members.
+    /// Every attribute name on members.
     private(set) var memberAttributes: [String] = []
 
     /// `P & Q` as `P` and `Q`; `@unchecked P` as `P`; `~Copyable` as nothing.
@@ -119,7 +119,7 @@ struct TypeDeclarationAccumulator {
             return
         }
         if let attributed = decl.asProtocol(WithAttributesSyntax.self) {
-            memberAttributes += TypeDeclarationReader.customAttributes(attributed.attributes)
+            memberAttributes += TypeDeclarationReader.attributeNames(attributed.attributes)
         }
         if let variable = decl.as(VariableDeclSyntax.self) {
             readVariable(variable)

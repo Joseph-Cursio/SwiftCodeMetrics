@@ -18,7 +18,8 @@ struct TypeDeclarationFacts: Codable, Hashable {
     var isConstrained: Bool
     /// Custom attributes on the declaration.
     var customAttributes: [String]
-    /// Custom attributes on the declaration and its members.
+    /// Every attribute name on the declaration and its members, any case,
+    /// for the module-macro test.
     var attachedAttributeNames: [String]
     /// The inheritance clause.
     var inherited: [RawInherited]

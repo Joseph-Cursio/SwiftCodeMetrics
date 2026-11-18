@@ -1,0 +1,273 @@
+//
+//  TypePass.swift
+//  SwiftCodeMetrics
+//
+//  The type level of the module pass (Spec §9, §10.3): every merged type
+//  and extension group, with sizes, WMC, cohesion and coupling, then the
+//  module-wide values and the type graph.
+//
+
+/// Computes the type level from resolved records.
+struct TypePass {
+    /// The module's table.
+    let table: SymbolTable
+    /// Every record, resolved.
+    let functions: [FunctionRecord]
+    /// Per-record facts; nil for records outside every type.
+    let facts: [RecordFacts?]
+    /// Imports per file.
+    let importsByFile: [String: [ImportFact]]
+    /// Each file's position in the input.
+    let fileOrder: [String: Int]
+    /// The options.
+    let options: MetricsOptions
+
+    /// The type level.
+    func run() -> TypeLevel {
+        let groups = MemberGrouping.groups(functions: functions, facts: facts)
+        var owned: [TypeKey: [Int]] = [:]
+        for (index, fact) in facts.enumerated() {
+            if let fact {
+                owned[fact.owner, default: []].append(index)
+            }
+        }
+        let keys = table.entries.keys.sorted(by: isBefore)
+        let index = TypeIndex(keys: keys, table: table)
+        var drafts: [TypeKey: TypeDraft] = [:]
+        for key in keys {
+            guard let entry = table.entries[key] else {
+                continue
+            }
+            drafts[key] = draft(key, entry: entry, groups: groups[key] ?? [], owned: owned[key] ?? [], index: index)
+        }
+        let conformers = conformerCounts(drafts)
+        let edges = keys.flatMap { key in
+            drafts[key]?.edges.edges { targetClass($0, drafts: drafts) } ?? []
+        }
+        let incoming = Dictionary(grouping: edges, by: \.target).mapValues { Set($0.map(\.source)) }
+        let outgoing = Dictionary(grouping: edges, by: \.source)
+        let types = keys.compactMap { key in
+            drafts[key].map { draft in
+                result(
+                    for: draft,
+                    context: ResultContext(
+                        drafts: drafts,
+                        index: index,
+                        edges: outgoing[key] ?? [],
+                        incoming: incoming[key]?.count ?? 0,
+                        conformers: conformers[key] ?? 0
+                    )
+                )
+            }
+        }
+        return TypeLevel(
+            types: types,
+            edges: edges,
+            cycles: StronglyConnected.cycles(in: edges),
+            unresolvedExtensions: table.unresolvedExtensions.map { fact in
+                extensionFact(fact, conformances: conformances(
+                    fact.declaration.inherited,
+                    resolver: resolver(for: fact),
+                    isConditional: fact.declaration.isConstrained,
+                    skipsFirst: false
+                ))
+            }
+        )
+    }
+
+    /// The number of non-protocol types conforming to each protocol,
+    /// directly or through refinement (Spec §9.5).
+    private func conformerCounts(_ drafts: [TypeKey: TypeDraft]) -> [TypeKey: Int] {
+        var conformers: [TypeKey: Int] = [:]
+        for draft in drafts.values where draft.entry.kind != .protocol && draft.entry.kind != .extensionGroup {
+            for target in refinedProtocols(of: draft.conformanceTargets, drafts: drafts) {
+                conformers[target, default: 0] += 1
+            }
+        }
+        return conformers
+    }
+
+    /// Source order: file, then the first declaration's offset.
+    private func isBefore(_ first: TypeKey, _ second: TypeKey) -> Bool {
+        let left = position(of: first)
+        let right = position(of: second)
+        if left.file != right.file {
+            return left.file < right.file
+        }
+        if left.offset != right.offset {
+            return left.offset < right.offset
+        }
+        return first.description < second.description
+    }
+
+    /// Where a type is first declared.
+    private func position(of key: TypeKey) -> (file: Int, offset: Int) {
+        let entry = table.entries[key]
+        if let primary = entry?.declarations.first {
+            return (fileOrder[primary.file] ?? Int.max, primary.declaration.range.start)
+        }
+        if let first = entry?.extensionFacts.first {
+            return (fileOrder[first.file] ?? Int.max, first.declaration.range.start)
+        }
+        return (Int.max, 0)
+    }
+
+    /// One type's draft: declarations resolved, references grouped.
+    private func draft(
+        _ key: TypeKey,
+        entry: TypeEntry,
+        groups: [MemberGroup],
+        owned: [Int],
+        index: TypeIndex
+    ) -> TypeDraft {
+        var edges = TypeEdges(owner: key, family: index.familyRoot(of: key))
+        var declarationReferences: [TypeReference] = []
+        var conformances: [ConformanceFact] = []
+        var extensions: [ExtensionFact] = []
+        for fact in entry.declarations {
+            let resolver = resolver(for: fact)
+            declarationReferences += add(fact.declaration, resolver: resolver, owner: entry, index: index, into: &edges)
+            conformances += self.conformances(
+                fact.declaration.inherited,
+                resolver: resolver,
+                isConditional: false,
+                skipsFirst: entry.kind == .class
+                    && isPossibleSuperclass(fact.declaration.inherited.first, resolver: resolver)
+            )
+        }
+        for fact in entry.extensionFacts {
+            let resolver = resolver(for: fact)
+            declarationReferences += add(fact.declaration, resolver: resolver, owner: entry, index: index, into: &edges)
+            // `extension IntBox: P` where `IntBox = Box<Int>` is constrained too.
+            let isBoundAlias = table.aliasTarget(for: fact.extended, from: resolver.context)?.isBoundGeneric == true
+            let own = self.conformances(
+                fact.declaration.inherited,
+                resolver: resolver,
+                isConditional: fact.declaration.isConstrained || isBoundAlias,
+                skipsFirst: false
+            )
+            conformances += own
+            extensions.append(extensionFact(fact, conformances: own))
+        }
+        for record in owned {
+            for reference in functions[record].typeReferences {
+                edges.add(reference, kind: reference.edgeKind, isWeakOrUnowned: false, familyOf: index.familyRoot(of:))
+            }
+        }
+        let primaryInherited = entry.declarations.first?.declaration.inherited.first
+        let primaryResolver = entry.declarations.first.map(resolver(for:))
+        let isPossible = entry.kind == .class
+            && primaryResolver.map { isPossibleSuperclass(primaryInherited, resolver: $0) } == true
+        let superclass = table.superclasses(of: key).first
+        return TypeDraft(
+            key: key,
+            entry: entry,
+            groups: groups,
+            declarationReferences: declarationReferences,
+            edges: edges,
+            conformances: conformances.uniqued(),
+            extensions: extensions,
+            superclass: superclass,
+            possibleSuperclass: isPossible && superclass == nil ? primaryInherited?.name : nil
+        )
+    }
+
+    /// Resolves a declaration's type names into `edges`, returning the references.
+    private func add(
+        _ declaration: TypeDeclarationFacts,
+        resolver: FunctionResolver,
+        owner: TypeEntry,
+        index: TypeIndex,
+        into edges: inout TypeEdges
+    ) -> [TypeReference] {
+        var entryKinds: [Int: EdgeKind] = [:]
+        var references: [TypeReference] = []
+        for name in declaration.typeNames {
+            guard let reference = resolver.typeReference(for: name) else {
+                // `struct Client: Services` where `Services = Fetching & Caching`.
+                if name.edgeKind == .inheritance {
+                    for member in compositionMembers(of: name, resolver: resolver, owner: owner) {
+                        edges.add(
+                            member,
+                            kind: member.edgeKind,
+                            isWeakOrUnowned: false,
+                            familyOf: index.familyRoot(of:)
+                        )
+                        references.append(member)
+                    }
+                }
+                continue
+            }
+            var kind = name.edgeKind
+            if kind == .inheritance {
+                // The entry's first name decides the kind of its generic arguments too.
+                kind = name.inheritanceEntry.flatMap { entryKinds[$0] }
+                    ?? inheritanceKind(of: reference, owner: owner)
+                if let entry = name.inheritanceEntry, entryKinds[entry] == nil {
+                    entryKinds[entry] = kind
+                }
+            }
+            var tagged = reference
+            tagged.edgeKind = kind
+            edges.add(tagged, kind: kind, isWeakOrUnowned: name.isWeakOrUnowned, familyOf: index.familyRoot(of:))
+            references.append(tagged)
+        }
+        return references
+    }
+
+    /// The kind an inheritance-clause entry gives: refinement or conformance
+    /// for a protocol target, inheritance for anything else.
+    private func inheritanceKind(of reference: TypeReference, owner: TypeEntry) -> EdgeKind {
+        // A protocol inherits only protocols: `protocol Store: Collection<Item>`.
+        if owner.kind == .protocol {
+            return .refinement
+        }
+        if let target = reference.target {
+            return table.entries[target]?.kind == .protocol ? .conformance : .inheritance
+        }
+        let lastName = reference.spelling.split(separator: ".").last.map(String.init) ?? reference.spelling
+        let isPlatformProtocol = reference.bucket == .platform
+            && (table.platform.protocols.contains(reference.spelling) || table.platform.protocols.contains(lastName))
+        return isPlatformProtocol || owner.kind != .class ? .conformance : .inheritance
+    }
+
+    /// How a `ce` target is classified (Spec §9.4).
+    private func targetClass(_ target: TypeKey, drafts: [TypeKey: TypeDraft]) -> TargetClass {
+        guard let draft = drafts[target] else {
+            return .concrete
+        }
+        if draft.entry.kind == .protocol {
+            return .protocol
+        }
+        if table.byPath[["View"]]?.isEmpty != false, conformsToView(draft, drafts: drafts) {
+            return .view
+        }
+        if draft.entry.kind == .enum, draft.caseNames.isEmpty, draft.hasInstanceMembers == false {
+            return .namespace
+        }
+        return .concrete
+    }
+
+    /// Whether a type conforms to SwiftUI's `View`, directly or through module protocols.
+    private func conformsToView(_ draft: TypeDraft, drafts: [TypeKey: TypeDraft]) -> Bool {
+        let viewNames: Set<String> = ["SwiftUI.View", "View"]
+        let refined = refinedProtocols(of: draft.conformanceTargets, drafts: drafts).compactMap { drafts[$0] }
+        let protocols = [draft] + refined
+        return protocols.contains { candidate in
+            candidate.conformances.contains { viewNames.contains($0.name) && $0.target == nil }
+        }
+    }
+
+    /// The module protocols `targets` name, and every protocol they refine.
+    func refinedProtocols(of targets: Set<TypeKey>, drafts: [TypeKey: TypeDraft]) -> Set<TypeKey> {
+        var seen: Set<TypeKey> = []
+        var pending = Array(targets)
+        while let next = pending.popLast() {
+            guard seen.insert(next).inserted else {
+                continue
+            }
+            pending += drafts[next]?.conformanceTargets ?? []
+        }
+        return seen
+    }
+}

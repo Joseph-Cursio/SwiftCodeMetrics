@@ -31,6 +31,12 @@ final class SymbolTable {
     private(set) var nestedNames: Set<String> = []
     /// Extension groups by written path: member lookup only, never a type reference.
     private(set) var extensionGroups: [[String]: TypeKey] = [:]
+    /// Extensions of a missing nested type of a module type (Spec §2.2).
+    private(set) var unresolvedExtensions: [ExtensionDeclFact] = []
+    /// Names of `macro` declarations in the module.
+    private(set) var macroNames: Set<String> = []
+    /// Every module some file imports, for module qualifiers on extensions.
+    private(set) var importedModules: Set<String> = []
     /// Superclass chains already computed.
     private var superclassMemo: [TypeKey: [TypeKey]] = [:]
     /// Resolved type paths, per file.
@@ -60,23 +66,13 @@ final class SymbolTable {
             for alias in file.declarations.typealiases {
                 aliases[alias.name, default: []].append(alias)
             }
+            macroNames.formUnion(file.declarations.macroNames)
+            importedModules.formUnion(file.imports.map(\.module))
         }
         mergeExtensions(types: pendingTypes, extensions: pendingExtensions)
     }
 
     // MARK: - Lookups
-
-    /// Whether a free function named `name` is visible from `file`.
-    func isFreeFunction(_ name: String, from file: String) -> Bool {
-        freeFunctions[name]?.contains { $0.isFileScoped == false || $0.file == file } == true
-    }
-
-    /// The visible global named `name`, if any.
-    func global(_ name: String, from file: String) -> GlobalFact? {
-        // `let` in one `#if` clause and `var` in another is mutable (Spec §2.6).
-        let visible = (globals[name] ?? []).filter { $0.isFileScoped == false || $0.file == file }
-        return visible.first(where: \.isStoredVar) ?? visible.first
-    }
 
     /// The in-module superclass chain of a class, nearest first (Spec §7.3).
     func superclasses(of key: TypeKey) -> [TypeKey] {
@@ -86,8 +82,7 @@ final class SymbolTable {
         superclassMemo[key] = []
         var chain: [TypeKey] = []
         if let entry = entries[key], entry.kind == .class, let first = entry.inherited.first,
-           case .module(let parent) = resolve(first, from: declarationContext(of: key)),
-           entries[parent]?.kind == .class, parent != key {
+           let parent = moduleClass(first, from: declarationContext(of: key)), parent != key {
             chain = [parent] + superclasses(of: parent).filter { $0 != key }
         }
         superclassMemo[key] = chain
@@ -111,21 +106,14 @@ final class SymbolTable {
         if case .module(let key) = resolve(spelled, from: topLevelContext(file: file)) {
             resolved = key
         }
+        // A type nested in a group keyed by its resolved name: `extension Swift.String { enum Limits }`.
+        for length in stride(from: path.count - 1, to: 0, by: -1) where resolved == nil {
+            if let group = extensionGroups[Array(path.prefix(length))] {
+                resolved = visible(byPath[group.path + path.dropFirst(length)] ?? [], from: file).first
+            }
+        }
         pathMemo[file, default: [:]][path] = resolved
         return resolved
-    }
-
-    /// A context at file scope, for extension and lexical paths.
-    func topLevelContext(file: String) -> ResolutionContext {
-        ResolutionContext(
-            file: file,
-            knownModules: [module],
-            importsXCTest: false,
-            importsFoundation: false,
-            chain: [],
-            genericParameters: [],
-            localOwners: []
-        )
     }
 
     /// The enclosing types of `key`, innermost first, the type itself included.
@@ -202,6 +190,7 @@ final class SymbolTable {
             for alias in fact.typealiases {
                 entry.add(alias)
             }
+            entry.declarations.append(fact)
             entries[key] = entry
             return
         }
@@ -215,6 +204,7 @@ final class SymbolTable {
         )
         entry.enclosingTypePath = fact.enclosingTypePath
         entry.enclosingLocalOwner = fact.enclosingLocalOwner
+        entry.declarations = [fact]
         for alias in fact.typealiases {
             entry.add(alias)
         }
@@ -239,7 +229,8 @@ final class SymbolTable {
                 // Types nested in an extension of a platform or external type
                 // keep their written path: `extension String { enum Limits }`.
                 for fact in pendingTypes {
-                    register(fact, path: fact.path)
+                    let prefix = Array(fact.path.prefix(fact.extensionPathLength))
+                    register(fact, path: groupPath(for: prefix, from: fact.file) + fact.path.dropFirst(prefix.count))
                 }
                 pendingTypes = []
                 pathMemo = [:]
@@ -263,6 +254,7 @@ final class SymbolTable {
                 for alias in fact.typealiases {
                     entries[key]?.add(alias)
                 }
+                entries[key]?.extensionFacts.append(fact)
                 pathMemo = [:]
                 progress = true
                 return false
@@ -275,14 +267,14 @@ final class SymbolTable {
     /// groups (Spec §2.2): members and typealiases, no stored state.
     private func registerExtensionGroups(_ extensions: [ExtensionDeclFact]) {
         for fact in extensions {
-            // `extension Feature.State` where `Feature` is a module type is an
-            // unresolved extension (Spec §2.2), not a group.
-            if fact.extended.components.count > 1, let root = fact.extended.components.first,
-               resolve(SpelledType(components: [root], moduleSelector: nil), from: topLevelContext(file: fact.file))
-                .isModuleType {
+            // `extension Feature.State` where `Feature` is a module type with no
+            // nested `State` is an unresolved extension (Spec §2.2), not a group.
+            if isMissingNestedType(fact.extended.components, from: fact.file) {
+                unresolvedExtensions.append(fact)
                 continue
             }
-            let key = TypeKey(module: module, path: fact.extended.components)
+            let path = groupPath(for: fact.extended.components, from: fact.file)
+            let key = TypeKey(module: module, path: path)
             if entries[key] == nil {
                 entries[key] = TypeEntry(
                     key: key,
@@ -292,12 +284,14 @@ final class SymbolTable {
                     members: [],
                     file: fact.file
                 )
-                extensionGroups[fact.extended.components] = key
+                extensionGroups[path] = key
             }
+            extensionGroups[fact.extended.components] = key
             entries[key]?.members += fact.members
             for alias in fact.typealiases {
                 entries[key]?.add(alias)
             }
+            entries[key]?.extensionFacts.append(fact)
         }
         pathMemo = [:]
     }

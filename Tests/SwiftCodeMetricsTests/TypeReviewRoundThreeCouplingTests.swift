@@ -117,4 +117,22 @@ struct TypeReviewRoundThreeCouplingTests {
         #expect(panel.declarationTypeReferences.allSatisfy { $0.edgeKind != .wrapper })
         #expect(Modules.type("Span", in: analysis)?.coupling.platformNameCount == 1)
     }
+
+    @Test("a bare _name that resolves to a global is not a wrapper name")
+    func globalUnderscoreName() {
+        let analysis = Modules.analysis("Lib", [
+            ("Globals.swift", "let _limit = 10\n"),
+            ("Gauge.swift", """
+            struct Gauge {
+                var limit = 0
+                var level = 0
+                func capped() -> Int { min(level, _limit) }
+                func raise() -> Int { limit + 1 }
+                func fill() -> Int { level }
+            }
+            """)
+        ])
+
+        #expect(Modules.type("Gauge", in: analysis)?.cohesion.lcom4 == 2)
+    }
 }

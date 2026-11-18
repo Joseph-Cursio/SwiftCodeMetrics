@@ -158,11 +158,16 @@ extension FunctionResolver {
             return
         }
         switch resolution {
-        case .inheritedMember, .ownMember:
-            // `_name` declared as is, own or inherited: not a wrapper name.
+        case .enumCase, .freeFunction, .global, .inheritedMember, .ownMember, .staticMember:
+            // `_name` declared as is (a member, a global, a free function): not a wrapper name.
             record(name.name, resolution, lookup: name.lookup, into: &references)
 
-        case .enumCase, .freeFunction, .global, .notCoupling, .staticMember, .unresolved:
+        case .notCoupling where name.name.hasPrefix("$") == false:
+            // A local or file-level `_a` that lexical lookup finds is declared.
+            record(name.name, resolution, lookup: name.lookup, into: &references)
+
+        case .notCoupling, .unresolved:
+            // An undeclared `_a`, or any `$a`, is retried as `a`.
             if Self.reachesMembers(name.lookup) {
                 record(stripped, resolveValue(stripped, lookup: name.lookup), lookup: name.lookup, into: &references)
             }

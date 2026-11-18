@@ -56,6 +56,45 @@ enum TypeSpelling {
         return spelled(type).map { [$0] } ?? []
     }
 
+    /// Whether `type` passes a generic typealias's parameters straight through,
+    /// in order, binding nothing: `Box<T>` under `typealias Handler<T>`.
+    static func isPassThrough(_ type: TypeSyntax, parameters: [String]) -> Bool {
+        let sugared = sugarArguments(type)
+        if sugared.isEmpty == false {
+            return sugared == parameters
+        }
+        let arguments: GenericArgumentClauseSyntax?
+        if let identifier = type.as(IdentifierTypeSyntax.self) {
+            arguments = identifier.genericArgumentClause
+        } else if let member = type.as(MemberTypeSyntax.self) {
+            let baseTokens = member.baseType.tokens(viewMode: .sourceAccurate)
+            guard baseTokens.contains(where: { $0.tokenKind == .leftAngle }) == false else {
+                return false
+            }
+            arguments = member.genericArgumentClause
+        } else {
+            return false
+        }
+        guard parameters.isEmpty == false, let arguments else {
+            return false
+        }
+        return arguments.arguments.map(\.argument.trimmedDescription) == parameters
+    }
+
+    /// The written arguments of sugar: `[T]`, `[K: V]`, `T?`; empty for other types.
+    private static func sugarArguments(_ type: TypeSyntax) -> [String] {
+        if let array = type.as(ArrayTypeSyntax.self) {
+            return [array.element.trimmedDescription]
+        }
+        if let dictionary = type.as(DictionaryTypeSyntax.self) {
+            return [dictionary.key.trimmedDescription, dictionary.value.trimmedDescription]
+        }
+        if let optional = type.as(OptionalTypeSyntax.self) {
+            return [optional.wrappedType.trimmedDescription]
+        }
+        return []
+    }
+
     /// Whether a parameter type is a closure, before typealias expansion.
     static func closureShape(_ type: TypeSyntax) -> ClosureShape {
         var current = type

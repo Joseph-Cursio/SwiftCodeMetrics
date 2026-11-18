@@ -150,4 +150,28 @@ struct TypeReviewRoundThreeTests {
         #expect(Modules.type("Outer.Parent.Mode.Label", in: analysis) != nil)
         #expect(Modules.keys(Modules.record("run()", in: analysis), .self) == ["self.reset()"])
     }
+
+    @Test("an alias chain to a bound generic is conditional; a pass-through generic alias is not")
+    func conditionalAliases() throws {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            protocol Summing {}
+            protocol Describable {}
+            protocol Listing {}
+            struct Box<Value> { var value: Value }
+            typealias IntBox = Box<Int>
+            typealias Counts = IntBox
+            extension Counts: Summing {}
+            typealias Handler<T> = Box<T>
+            extension Handler: Describable {}
+            typealias List<T> = [T]
+            extension List: Listing {}
+            """)
+        ])
+        let box = try #require(Modules.type("Box", in: analysis))
+
+        #expect(box.conformances.first { $0.name == "Summing" }?.isConditional == true)
+        #expect(box.conformances.first { $0.name == "Describable" }?.isConditional == false)
+        #expect(Modules.type("Array", in: analysis)?.conformances.first?.isConditional == false)
+    }
 }

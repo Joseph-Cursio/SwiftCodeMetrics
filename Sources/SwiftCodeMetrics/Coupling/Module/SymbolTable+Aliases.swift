@@ -43,7 +43,10 @@ extension SymbolTable {
         let aliases = visibleAliases(name, from: context.file)
         // `#if` variants with different targets name no one alias.
         guard let first = aliases.first,
-              aliases.allSatisfy({ $0.target == first.target && $0.closure == first.closure }) else {
+              aliases.allSatisfy({ alias in
+                  alias.target == first.target && alias.closure == first.closure
+                      && alias.compositionMembers == first.compositionMembers
+              }) else {
             return nil
         }
         return first

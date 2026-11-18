@@ -139,7 +139,7 @@ struct TypePass {
             let resolver = resolver(for: fact)
             declarationReferences += add(fact.declaration, resolver: resolver, owner: entry, index: index, into: &edges)
             // `extension IntBox: P` where `IntBox = Box<Int>` is constrained too.
-            let isBoundAlias = table.aliasTarget(for: fact.extended, from: resolver.context)?.isBoundGeneric == true
+            let isBoundAlias = table.reachesBoundGeneric(fact.extended, from: resolver.context)
             let own = self.conformances(
                 fact.declaration.inherited,
                 resolver: resolver,

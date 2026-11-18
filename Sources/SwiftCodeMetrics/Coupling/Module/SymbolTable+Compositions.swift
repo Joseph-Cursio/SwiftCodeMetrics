@@ -30,6 +30,27 @@ extension SymbolTable {
         }.first
     }
 
+    /// Whether a name reaches a bound generic type through module typealiases,
+    /// directly or along a chain: `Counts = IntBox` where `IntBox = Box<Int>`.
+    func reachesBoundGeneric(_ type: SpelledType, from context: ResolutionContext) -> Bool {
+        var visiting: Set<String> = []
+        var current = (type, context)
+        while let alias = aliasTarget(for: current.0, from: current.1) {
+            let identity = alias.file + "|" + alias.typePath.joined(separator: ".") + "|" + alias.name
+            guard visiting.insert(identity).inserted else {
+                return false
+            }
+            if alias.isBoundGeneric {
+                return true
+            }
+            guard let target = alias.target else {
+                return false
+            }
+            current = (target, position(of: alias, from: current.1))
+        }
+        return false
+    }
+
     /// The leaves, with a guard against alias cycles.
     private func leaves(
         of type: SpelledType,
@@ -40,9 +61,11 @@ extension SymbolTable {
             return []
         }
         let identity = alias.file + "|" + alias.typePath.joined(separator: ".") + "|" + alias.name
+        // Only aliases on the current path stop the walk: a diamond expands twice.
         guard visiting.insert(identity).inserted else {
             return []
         }
+        defer { visiting.remove(identity) }
         let position = position(of: alias, from: context)
         if alias.compositionMembers.isEmpty == false {
             return alias.compositionMembers.flatMap { member in

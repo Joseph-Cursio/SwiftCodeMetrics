@@ -38,7 +38,8 @@ struct TypeEntry {
     /// make the name ambiguous (Spec §7.3) rather than letting one win.
     mutating func add(_ alias: TypealiasFact) {
         if let existing = typealiases[alias.name],
-           existing.target != alias.target || existing.closure != alias.closure {
+           existing.target != alias.target || existing.closure != alias.closure
+            || existing.compositionMembers != alias.compositionMembers {
             conflictingAliases.insert(alias.name)
         }
         typealiases[alias.name] = alias

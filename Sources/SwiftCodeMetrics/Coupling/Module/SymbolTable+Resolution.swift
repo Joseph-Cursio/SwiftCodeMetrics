@@ -26,14 +26,8 @@ extension SymbolTable {
         if let selector = spelled.moduleSelector {
             return resolveQualified(module: selector, rest: components, context: context, visiting: &visiting)
         }
-        if components.count > 1, context.knownModules.contains(root),
-           visible(byPath[[root]] ?? [], from: context.file).isEmpty {
-            return resolveQualified(
-                module: root,
-                rest: Array(components.dropFirst()),
-                context: context,
-                visiting: &visiting
-            )
+        if let qualified = resolveDotted(components, context: context, visiting: &visiting) {
+            return qualified
         }
         if context.genericParameters.contains(root) {
             return .genericParameter
@@ -66,6 +60,25 @@ extension SymbolTable {
             return fallback(components, context: context)
         }
         return descend(from: first, through: components.dropFirst(), context: context, visiting: &visiting)
+    }
+
+    /// `Module.Name` written with a dot, when the root is a known module
+    /// that no module type shadows.
+    private func resolveDotted(
+        _ components: [String],
+        context: ResolutionContext,
+        visiting: inout Set<String>
+    ) -> TypeResolution? {
+        guard components.count > 1, let root = components.first, context.knownModules.contains(root),
+              visible(byPath[[root]] ?? [], from: context.file).isEmpty else {
+            return nil
+        }
+        // A type nested in a group that keeps its written path: `extension Swift.Result { struct Box }`.
+        if let exact = visible(byPath[components] ?? [], from: context.file).first {
+            return .module(exact)
+        }
+        let rest = Array(components.dropFirst())
+        return resolveQualified(module: root, rest: rest, context: context, visiting: &visiting)
     }
 
     /// A simple name through the nesting chain, local types, then module top level.
@@ -117,12 +130,26 @@ extension SymbolTable {
         if let member = rest.first, let found = memberType(member, of: group, context: context, visiting: &visiting) {
             return descend(from: found, through: rest.dropFirst(), context: context, visiting: &visiting)
         }
+        // The group's path may carry a module qualifier: `extension Swift.Result`.
         let extended = resolve(
             SpelledType(components: group.path, moduleSelector: nil),
-            from: fileScope(of: context),
+            from: groupScope(of: context),
             visiting: &visiting
         )
         return descend(from: extended, through: rest, context: context, visiting: &visiting)
+    }
+
+    /// File scope with every platform and imported module known as a qualifier.
+    private func groupScope(of context: ResolutionContext) -> ResolutionContext {
+        ResolutionContext(
+            file: context.file,
+            knownModules: importedModules.union(PlatformModules.harvested).union([module]),
+            importsXCTest: context.importsXCTest,
+            importsFoundation: context.importsFoundation,
+            chain: [],
+            genericParameters: [],
+            localOwners: []
+        )
     }
 
     /// `context` at file scope: no enclosing types, generics or locals.
@@ -199,10 +226,10 @@ extension SymbolTable {
                 current = found ?? .unresolved
 
             case .platform(let name):
-                current = .platform(name + "." + component)
+                current = groupNested(name, component, file: context.file) ?? .platform(name + "." + component)
 
             case .external(let name):
-                current = .external(name + "." + component)
+                current = groupNested(name, component, file: context.file) ?? .external(name + "." + component)
 
             case .ambiguous, .genericParameter, .opaqueAlias, .unresolved:
                 return current
@@ -266,7 +293,27 @@ extension SymbolTable {
         let isPlatform = PlatformModules.harvested.contains(qualifier)
             || (qualifier == PlatformModules.xcTest && context.importsXCTest)
         let isPlatformName = isPlatform && isPlatformType(dotted, rest.first, context: context)
-        return isPlatformName ? .platform(dotted) : .external(dotted)
+        guard let root = rest.first else {
+            return .unresolved
+        }
+        // `Swift.String.Limits` reaches the module's type nested in the String group.
+        let start: TypeResolution = isPlatformName ? .platform(root) : .external(root)
+        return descend(from: start, through: rest.dropFirst(), context: context, visiting: &visiting)
+    }
+
+    /// The module type nested in the group for the platform or external
+    /// type `name`: `Double.Scale` for `extension Double { enum Scale }`.
+    /// Never one nested in a module type that shadows the name.
+    private func groupNested(_ name: String, _ component: String, file: String) -> TypeResolution? {
+        let base = name.split(separator: ".").map(String.init)
+        guard let root = base.first, visible(byPath[[root]] ?? [], from: file).isEmpty else {
+            return nil
+        }
+        let nested = visible(byPath[base + [component]] ?? [], from: file)
+        guard let only = nested.first else {
+            return nil
+        }
+        return nested.count == 1 ? .module(only) : .ambiguous
     }
 
     /// A name the module does not declare.

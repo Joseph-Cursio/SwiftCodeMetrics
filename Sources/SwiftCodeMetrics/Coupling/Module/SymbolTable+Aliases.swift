@@ -90,8 +90,8 @@ extension SymbolTable {
         }
         let ownerPath = Array(components.dropLast())
         let owner = resolve(SpelledType(components: ownerPath, moduleSelector: nil), from: context)
-        // `String.Transform`: an alias in an extension group sits on its written path.
-        guard let key = owner.moduleKey ?? extensionGroups[ownerPath],
+        // `String.Transform`: an alias in an extension group.
+        guard let key = owner.moduleKey ?? groupKey(for: ownerPath, resolution: owner),
               nestedTypes(named: name, of: key, from: context.file).isEmpty,
               entries[key]?.conflictingAliases.contains(name) == false else {
             return nil

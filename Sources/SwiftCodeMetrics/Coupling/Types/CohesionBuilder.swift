@@ -36,6 +36,11 @@ struct CohesionBuilder {
     /// The extension a member is declared in; nil for the primary declaration.
     let declaringExtension: (MemberGroup) -> ExtensionFact?
 
+    /// Own computed instance properties, excluded ones (`description`) included.
+    private var ownComputed: Set<String> {
+        Set(groups.filter { $0.role == .computedProperty && $0.isTypeLevel == false }.map(\.baseName))
+    }
+
     /// The result for an enum, protocol or extension group: no graph.
     private static func notApplicable(noa: Int, attributeCount: Int) -> CohesionResult {
         CohesionResult(
@@ -75,7 +80,12 @@ struct CohesionBuilder {
             }
         }
         let attributeSet = Set(attributes)
-        let touches = references.map { touched(by: $0, attributes: attributes, attributeSet: attributeSet) }
+        // An inherited attribute the type does not shadow: `super.x`, or a use
+        // that reaches the superclass, touches only one of these.
+        let inheritedSet = attributeSet.subtracting(ownAttributes)
+        let touches = references.map { reference in
+            touched(by: reference, attributes: attributes, attributeSet: attributeSet, inheritedSet: inheritedSet)
+        }
         var components = UnionFind(count: nodes.count)
         joinSharedAttributes(touches, into: &components)
         joinMemberEdges(nodes: nodes, references: references, attributes: attributeSet, into: &components)
@@ -89,7 +99,7 @@ struct CohesionBuilder {
             unusedAttributes: ownAttributes.filter { name in touches.allSatisfy { $0.contains(name) == false } }
                 .uniqued(),
             unresolvedMemberRefs: everyReference.unresolved.sorted(),
-            inheritedMemberRefs: everyReference.inherited.subtracting(attributeSet).sorted(),
+            inheritedMemberRefs: everyReference.inherited.subtracting(inheritedSet).sorted(),
             rootlessKeyPathNames: everyReference.rootlessKeyPaths.intersection(attributeSet).sorted(),
             nodeCount: nodes.count,
             noa: ownAttributes.uniqued().count,
@@ -160,13 +170,22 @@ struct CohesionBuilder {
         return nil
     }
 
-    /// The attributes one node touches (rules 1–6).
-    private func touched(by references: SelfReferences, attributes: [String], attributeSet: Set<String>) -> [String] {
+    /// The attributes one node touches (rules 1–6). An own computed
+    /// override of an inherited stored property is its own node, not a
+    /// touch of the attribute it overrides.
+    private func touched(
+        by references: SelfReferences,
+        attributes: [String],
+        attributeSet: Set<String>,
+        inheritedSet: Set<String>
+    ) -> [String] {
         if references.wholeSelf, kind == .struct, options.wholeSelfInStructs {
             return attributes
         }
-        let names = references.memberNames.union(references.keyPathMembers).union(references.inherited)
-        return attributes.filter { attributeSet.contains($0) && names.contains($0) }
+        let read = references.memberNames.union(references.keyPathMembers)
+        let own = read.subtracting(ownComputed).intersection(attributeSet)
+        let names = own.union(references.inherited.intersection(inheritedSet))
+        return attributes.filter(names.contains)
     }
 
     /// Joins nodes that touch a common attribute.
@@ -194,8 +213,7 @@ struct CohesionBuilder {
         for (index, node) in nodes.enumerated() {
             byName[node.baseName, default: []].append(index)
         }
-        // Own computed properties, excluded ones (`description`) included.
-        let computed = Set(groups.filter { $0.role == .computedProperty && $0.isTypeLevel == false }.map(\.baseName))
+        let computed = ownComputed
         for (caller, reference) in references.enumerated() {
             for call in reference.calls {
                 let named = byName[call.name] ?? []
@@ -207,8 +225,9 @@ struct CohesionBuilder {
                     components.union(caller, target)
                 }
             }
-            // A stored property read is a touch, not an edge to a method named like it.
-            for name in reference.memberNames where attributes.contains(name) == false {
+            // A stored property read is a touch, not an edge to a method named
+            // like it; a read of an own computed override is an edge.
+            for name in reference.memberNames where attributes.contains(name) == false || computed.contains(name) {
                 // A computed property read joins the property, not methods named like it.
                 let named = byName[name] ?? []
                 let properties = named.filter { nodes[$0].role == .computedProperty }

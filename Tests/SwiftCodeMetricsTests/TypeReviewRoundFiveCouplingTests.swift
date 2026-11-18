@@ -12,6 +12,73 @@ import Testing
 
 @Suite("v0.3 review regressions, round 5: cohesion, coupling and selectors")
 struct TypeReviewRoundFiveCouplingTests {
+    @Test("an own computed override is a node; inherited methods and $ names reach the superclass")
+    func cohesionOverrides() throws {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            import os
+            class Base {
+                var value = 0
+                func total(of items: [Int]) -> Int { items.reduce(0, +) }
+            }
+            final class Sub: Base {
+                var a = 0
+                var b = 0
+                override var value: Int {
+                    get { a }
+                    set { a = newValue }
+                }
+                func readValue() -> Int { value * 2 }
+                func readB() -> Int { b }
+            }
+            final class Counter: Base {
+                var total = 0
+                var other = 0
+                func combined() -> Int { total(of: [other]) }
+                func readTotal() -> Int { total }
+                func readOther() -> Int { other }
+                func log() { _ = os.Logger(subsystem: "x", category: "y") }
+            }
+            """)
+        ])
+        let sub = try #require(Modules.type("Sub", in: analysis))
+        let counter = try #require(Modules.type("Counter", in: analysis))
+
+        #expect(sub.cohesion.lcom4 == 2)
+        #expect(counter.cohesion.lcom4 == 2)
+        #expect(counter.cohesion.inheritedMemberRefs == ["total"])
+        #expect(counter.cohesion.unresolvedMemberRefs.isEmpty)
+    }
+
+    @Test("a projected name that reaches an inherited property is inherited, the option off")
+    func projectedInheritedNames() throws {
+        var options = MetricsOptions()
+        options.cohesion.inheritsModuleSuperclassAttributes = false
+        let input = Modules.input("Lib", [
+            ("A.swift", """
+            @propertyWrapper
+            struct Tracked<Value> {
+                var wrappedValue: Value
+                var projectedValue: Int { 0 }
+            }
+            class Base {
+                @Tracked var value = 0
+            }
+            final class Sub: Base {
+                var a = 0
+                var b = 0
+                func value(for key: String) -> Int { a }
+                func observe() -> Int { $value + b }
+            }
+            """)
+        ])
+        let analysis = SwiftCodeMetrics.analyzeModule(input, options: options)
+        let sub = try #require(Modules.type("Sub", in: analysis))
+
+        #expect(sub.cohesion.lcom4 == 2)
+        #expect(sub.cohesion.inheritedMemberRefs == ["value"])
+    }
+
     @Test("another module's selector is never shadowed by a module type named like that module")
     func foreignSelectors() throws {
         let bridge = ("Bridge.swift", """

@@ -20,6 +20,8 @@ struct MemberSets {
     let stored: Set<String>
     /// Own instance methods, by base name and labels.
     let methods: Set<MemberCall>
+    /// Instance methods of the in-module superclasses.
+    let inheritedMethods: Set<MemberCall>
 
     /// Where a `self.name` is declared, by name alone.
     func place(_ name: String) -> MemberPlace {

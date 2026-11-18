@@ -95,11 +95,15 @@ extension FunctionResolver {
         for call in raw.calls {
             classifyCall(call, sets: sets, into: &references)
             // Calling a stored closure property reads it (rules 1 and 2), unless
-            // an instance method with those labels is the callee.
+            // an instance method with those labels, own or inherited, is the callee.
             let memberCall = MemberCall(name: call.name, labels: call.labels)
             if sets.stored.contains(call.name), references.calls.contains(memberCall),
                sets.methods.contains(memberCall) == false {
-                references.memberNames.insert(call.name)
+                if sets.inheritedMethods.contains(memberCall) {
+                    references.inherited.insert(call.name)
+                } else {
+                    references.memberNames.insert(call.name)
+                }
             }
         }
         for keyPath in raw.cohesion.keyPaths {
@@ -120,6 +124,8 @@ extension FunctionResolver {
         let isProperty: (MemberFact) -> Bool = { member in
             member.isTypeLevel == false && (member.kind == .storedProperty || member.kind == .computedProperty)
         }
+        let isMethod: (MemberFact) -> Bool = { $0.kind == .function && $0.isTypeLevel == false }
+        let call: (MemberFact) -> MemberCall = { MemberCall(name: $0.name, labels: $0.labels.map(SyntaxFacts.bare)) }
         return MemberSets(
             own: Set(entry.members.map(\.name)),
             inherited: Set(inheritedMembers.map(\.name)),
@@ -127,9 +133,8 @@ extension FunctionResolver {
             inheritedProperties: Set(inheritedMembers.filter(isProperty).map(\.name)),
             stored: Set(entry.members.filter { $0.kind == .storedProperty && $0.isTypeLevel == false }.map(\.name)),
             // Only instance methods are reachable from an instance call.
-            methods: Set(entry.members.filter { $0.kind == .function && $0.isTypeLevel == false }.map { member in
-                MemberCall(name: member.name, labels: member.labels.map(SyntaxFacts.bare))
-            })
+            methods: Set(entry.members.filter(isMethod).map(call)),
+            inheritedMethods: Set(inheritedMembers.filter(isMethod).map(call))
         )
     }
 
@@ -148,7 +153,7 @@ extension FunctionResolver {
         }
         let place = Self.refine(sets.place(written), written, call: nil, sets: sets)
         if place == .undeclared, let stripped = Self.wrapperBase(written), sets.place(stripped) != .undeclared {
-            file(stripped, at: sets.place(stripped), into: &references)
+            file(stripped, at: Self.refine(sets.place(stripped), stripped, call: nil, sets: sets), into: &references)
         } else {
             file(written, at: place, into: &references)
         }
@@ -176,6 +181,10 @@ extension FunctionResolver {
         if CalleeReader.startsUppercase(name.name), name.isTypePosition, resolution.isMember == false {
             return
         }
+        // A module qualifier, lowercase too: `os.Logger(...)`.
+        if name.isTypePosition, context.knownModules.contains(name.name), resolution.isMember == false {
+            return
+        }
         if case .ownMember = resolution, name.isCompound == false,
            sets.reachesInheritedProperty(name.name) {
             resolution = .inheritedMember
@@ -201,7 +210,11 @@ extension FunctionResolver {
         case .notCoupling, .unresolved:
             // An undeclared `_a`, or any `$a`, is retried as `a`.
             if Self.reachesMembers(name.lookup) {
-                record(stripped, resolveValue(stripped, lookup: name.lookup), lookup: name.lookup, into: &references)
+                var retried = resolveValue(stripped, lookup: name.lookup)
+                if case .ownMember = retried, sets.reachesInheritedProperty(stripped) {
+                    retried = .inheritedMember
+                }
+                record(stripped, retried, lookup: name.lookup, into: &references)
             }
         }
     }

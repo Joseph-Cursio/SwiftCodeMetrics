@@ -24,4 +24,15 @@ enum ValueResolution {
     case staticMember(TypeKey, MemberFact)
     /// Nothing the module declares: inherited from outside, a protocol default, macro-added or imported.
     case unresolved
+
+    /// Whether the name is an instance member, own or inherited.
+    var isMember: Bool {
+        switch self {
+        case .inheritedMember, .ownMember:
+            return true
+
+        case .enumCase, .freeFunction, .global, .notCoupling, .staticMember, .unresolved:
+            return false
+        }
+    }
 }

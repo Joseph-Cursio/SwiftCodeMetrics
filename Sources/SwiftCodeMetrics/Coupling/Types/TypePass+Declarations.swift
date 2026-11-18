@@ -26,19 +26,17 @@ extension TypePass {
 
     /// A resolver for a type's inheritance clause, which Swift looks up
     /// outside the type's body: its generic parameters are visible, its
-    /// nested types are not, so `class Outer: Base` with a nested `Outer.Base`
-    /// inherits the top-level Base. A top-level local type keeps its own
-    /// position, for the function around it.
+    /// nested types and member typealiases are not, so `class Outer: Base`
+    /// with a nested `Outer.Base` inherits the top-level Base. A top-level
+    /// local type's clause resolves where the function around it does.
     func clauseResolver(for fact: TypeFact) -> FunctionResolver {
-        guard fact.path.count > 1 || fact.localTo == nil else {
-            return resolver(for: fact)
-        }
-        let parentPath = Array(fact.path.dropLast())
+        let isTopLevelLocal = fact.path.count == 1 && fact.localTo != nil
+        let parentPath = isTopLevelLocal ? fact.enclosingTypePath : Array(fact.path.dropLast())
         return resolver(
             context: FunctionContext(
                 typePath: parentPath,
-                extensionPathLength: min(fact.extensionPathLength, parentPath.count),
-                localOwner: fact.localTo,
+                extensionPathLength: isTopLevelLocal ? 0 : min(fact.extensionPathLength, parentPath.count),
+                localOwner: isTopLevelLocal ? fact.enclosingLocalOwner : fact.localTo,
                 enclosingRecords: fact.localTo.map { [$0] } ?? [],
                 genericParameters: fact.genericParameters + fact.associatedTypes,
                 isTypeLevel: false,

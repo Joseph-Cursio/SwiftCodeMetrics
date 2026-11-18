@@ -137,4 +137,55 @@ struct TypeReviewRoundFiveTests {
         #expect(parser?.cohesion.nodeCount == 1)
         #expect(Modules.type("Shape", in: analysis)?.sizes.nom == 0)
     }
+
+    @Test("a top-level local type's inheritance clause does not see its own nested types or aliases")
+    func localInheritanceClauses() throws {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            class Base {}
+            protocol Fetching {}
+            protocol Caching {}
+            func build() -> AnyObject {
+                final class Local: Base {
+                    final class Base {}
+                }
+                struct Worker: Fetching {
+                    typealias Fetching = Caching
+                }
+                _ = Worker()
+                return Local()
+            }
+            """)
+        ])
+        let local = try #require(Self.local("Local", in: analysis))
+
+        #expect(local.coupling.ceTotal == 1)
+        #expect(local.coupling.internalRefs == 0)
+        #expect(Modules.type("Base", in: analysis)?.coupling.caWithinModule == 1)
+        #expect(Modules.type("Fetching", in: analysis)?.protocolFacts?.conformerCount == 1)
+        #expect(Modules.type("Caching", in: analysis)?.protocolFacts?.conformerCount == 0)
+    }
+
+    @Test("a type nested through a private alias of a private type stays in its family")
+    func privateAliasFamilies() throws {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            private struct Outer {
+                let inner: Inner
+            }
+            private typealias Box = Outer
+            extension Box {
+                struct Inner {
+                    func attach(to owner: Outer) {}
+                }
+            }
+            """)
+        ])
+        let outer = try #require(analysis.types.first { $0.key.path == ["Outer"] })
+
+        #expect(outer.coupling.ceTotal == 0)
+        #expect(outer.coupling.internalRefs == 1)
+        #expect(analysis.typeEdges.isEmpty)
+        #expect(analysis.typeCycles.isEmpty)
+    }
 }

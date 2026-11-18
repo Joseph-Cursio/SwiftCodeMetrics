@@ -22,6 +22,9 @@ struct MemberSets {
     let methods: Set<MemberCall>
     /// Instance methods of the in-module superclasses.
     let inheritedMethods: Set<MemberCall>
+    /// Inherited names whose nearest declaration up the chain is a stored
+    /// instance property, not a computed override of one.
+    let inheritedStorage: Set<String>
 
     /// Where a `self.name` is declared, by name alone.
     func place(_ name: String) -> MemberPlace {
@@ -36,6 +39,16 @@ struct MemberSets {
     /// has `var name` and the type has `name(for:)`.
     func reachesInheritedProperty(_ name: String) -> Bool {
         ownProperties.contains(name) == false && inheritedProperties.contains(name)
+    }
+
+    /// Whether an inherited use reads storage: a read whose nearest
+    /// declaration is a stored property, or a call of a stored closure that
+    /// no inherited method with those labels takes.
+    func readsInheritedStorage(_ name: String, call: MemberCall?) -> Bool {
+        if let call, inheritedMethods.contains(call) {
+            return false
+        }
+        return inheritedStorage.contains(name)
     }
 
     /// Whether a call reaches an inherited property: `self.onTap()` where

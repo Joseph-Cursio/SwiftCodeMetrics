@@ -90,6 +90,7 @@ struct CohesionBuilder {
         joinSharedAttributes(touches, into: &components)
         joinMemberEdges(nodes: nodes, references: references, attributes: attributeSet, into: &components)
         let everyReference = references.reduce(SelfReferences()) { $0.merged(with: $1) }
+        let inheritedRefs = everyReference.inherited.subtracting(inheritedSet).union(everyReference.inheritedReferences)
         var result = CohesionResult(
             lcom4: nil,
             nullReason: nil,
@@ -99,7 +100,7 @@ struct CohesionBuilder {
             unusedAttributes: ownAttributes.filter { name in touches.allSatisfy { $0.contains(name) == false } }
                 .uniqued(),
             unresolvedMemberRefs: everyReference.unresolved.sorted(),
-            inheritedMemberRefs: everyReference.inherited.subtracting(inheritedSet).sorted(),
+            inheritedMemberRefs: inheritedRefs.sorted(),
             rootlessKeyPathNames: everyReference.rootlessKeyPaths.intersection(attributeSet).sorted(),
             nodeCount: nodes.count,
             noa: ownAttributes.uniqued().count,

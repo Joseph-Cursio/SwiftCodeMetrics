@@ -67,9 +67,8 @@ struct TypePass {
             unresolvedExtensions: table.unresolvedExtensions.map { fact in
                 extensionFact(fact, conformances: conformances(
                     fact.declaration.inherited,
-                    resolver: resolver(for: fact),
-                    isConditional: fact.declaration.isConstrained,
-                    skipsFirst: false
+                    resolver: clauseResolver(for: fact),
+                    isConditional: fact.declaration.isConstrained
                 ))
             }
         )
@@ -129,25 +128,24 @@ struct TypePass {
             let site = DeclarationSite(owner: entry, isExtension: false, clauseResolver: clause)
             let resolver = resolver(for: fact)
             declarationReferences += add(fact.declaration, at: site, resolver: resolver, index: index, into: &edges)
+            let inherited = fact.declaration.inherited
             conformances += self.conformances(
-                fact.declaration.inherited,
+                entry.kind == .class ? withoutSuperclass(inherited, resolver: clause) : inherited,
                 resolver: clause,
-                isConditional: false,
-                skipsFirst: entry.kind == .class
-                    && isPossibleSuperclass(fact.declaration.inherited.first, resolver: clause)
+                isConditional: false
             )
         }
         for fact in entry.extensionFacts {
             let resolver = resolver(for: fact)
-            let site = DeclarationSite(owner: entry, isExtension: true, clauseResolver: resolver)
+            let clause = clauseResolver(for: fact)
+            let site = DeclarationSite(owner: entry, isExtension: true, clauseResolver: clause)
             declarationReferences += add(fact.declaration, at: site, resolver: resolver, index: index, into: &edges)
             // `extension IntBox: P` where `IntBox = Box<Int>` is constrained too.
             let isBoundAlias = table.reachesBoundGeneric(fact.extended, from: resolver.context)
             let own = self.conformances(
                 fact.declaration.inherited,
-                resolver: resolver,
-                isConditional: fact.declaration.isConstrained || isBoundAlias,
-                skipsFirst: false
+                resolver: clause,
+                isConditional: fact.declaration.isConstrained || isBoundAlias
             )
             conformances += own
             extensions.append(extensionFact(fact, conformances: own))
@@ -190,22 +188,23 @@ struct TypePass {
         var entryKinds: [Int: EdgeKind] = [:]
         var references: [TypeReference] = []
         for name in declaration.typeNames {
-            // Inheritance-clause names resolve outside the type's body.
-            let nameResolver = name.inheritanceEntry == nil ? resolver : site.clauseResolver
+            // Inheritance-clause names and generic constraints resolve outside the type's body.
+            let isOutside = name.inheritanceEntry != nil || name.isInGenericClause
+            let nameResolver = isOutside ? site.clauseResolver : resolver
             guard let reference = nameResolver.typeReference(for: name) else {
                 // `struct Client: Services` where `Services = Fetching & Caching`;
                 // elsewhere, `let deps: Services` names each member with its own kind.
                 let members = name.edgeKind == .inheritance
                     ? compositionMembers(of: name, resolver: nameResolver, owner: owner)
                     : nameResolver.expandedReferences(for: name)
+                // A generic argument of an entry takes the entry's kind: `BaseViewModel<any Deps>`.
+                let entryKind = name.inheritanceEntry.flatMap { entryKinds[$0] }
                 for member in members {
-                    edges.add(
-                        member,
-                        kind: member.edgeKind,
-                        isWeakOrUnowned: name.isWeakOrUnowned,
-                        familyOf: index.familyRoot(of:)
-                    )
-                    references.append(member)
+                    var tagged = member
+                    tagged.edgeKind = entryKind ?? member.edgeKind
+                    let isWeak = name.isWeakOrUnowned
+                    edges.add(tagged, kind: tagged.edgeKind, isWeakOrUnowned: isWeak, familyOf: index.familyRoot(of:))
+                    references.append(tagged)
                 }
                 continue
             }
@@ -241,9 +240,12 @@ struct TypePass {
         if owner.kind == .protocol {
             return .refinement
         }
-        let lastName = reference.spelling.split(separator: ".").last.map(String.init) ?? reference.spelling
+        // `Key` where `typealias Key = Hashable` resolves to the protocol.
+        let names = [reference.spelling, reference.resolvedName ?? reference.spelling].flatMap { name in
+            [name, name.split(separator: ".").last.map(String.init) ?? name]
+        }
         let isPlatformProtocol = reference.bucket == .platform
-            && (table.platform.protocols.contains(reference.spelling) || table.platform.protocols.contains(lastName))
+            && names.contains(where: table.platform.protocols.contains)
         // Only a class's first entry can be a superclass; an extension's entries are protocols.
         let canBeSuperclass = owner.kind == .class && site.isExtension == false && entry == 0
         return isPlatformProtocol || canBeSuperclass == false ? .conformance : .inheritance

@@ -31,6 +31,9 @@ struct RawTypeName: Codable, Hashable {
     /// For a name in an inheritance clause: the index of its entry, whose
     /// first name decides the edge kind of all of them.
     var inheritanceEntry: Int?
+    /// For a constraint in a type's generic parameter clause: it resolves
+    /// outside the body, like the inheritance clause.
+    var isInGenericClause = false
 
     /// The reference before the module pass resolves it.
     var unresolvedReference: TypeReference {

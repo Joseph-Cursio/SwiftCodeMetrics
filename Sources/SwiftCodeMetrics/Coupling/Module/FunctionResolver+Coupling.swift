@@ -147,8 +147,9 @@ extension FunctionResolver {
                 || isThisModuleGlobal(name.type) {
                 return nil
             }
-            // `Lib.Form.State()` and `Lib::Form.State()`: the module stripped, then step 4.
-            if name.isCandidate, resolution.isModuleType, let nested = nestedTarget(name) {
+            // `Lib.Form.State()` and `Lib::Form.State()`: the module stripped, then step 4;
+            // `Swift.String.Limits.clamp(1)` reaches the type nested in the String group.
+            if name.isCandidate, let nested = nestedTarget(name) {
                 return reference(nested.name, resolution: nested.resolution)
             }
         }

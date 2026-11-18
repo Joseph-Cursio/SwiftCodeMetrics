@@ -34,6 +34,9 @@ struct FunctionResolver {
         let importsXCTest = imported.contains(PlatformModules.xcTest)
         let current = Self.currentType(raw.context, table: table)
         let chain = current.map(table.chain(from:)) ?? []
+        // An unresolved extension's records have no type, but still see the
+        // types around it: `Helper` in `extension Feature.State` is Feature's.
+        let enclosing = current == nil ? Self.enclosingType(raw.context, table: table) : nil
         var generics = Set(raw.context.genericParameters)
         for key in chain {
             generics.formUnion(table.entries[key]?.genericParameters ?? [])
@@ -47,7 +50,8 @@ struct FunctionResolver {
             importsFoundation: imported.isDisjoint(with: PlatformModules.foundationExporters) == false,
             chain: chain,
             genericParameters: generics,
-            localOwners: raw.context.enclosingRecords.reversed()
+            localOwners: raw.context.enclosingRecords.reversed(),
+            enclosingChain: enclosing.map(table.chain(from:)) ?? []
         )
     }
 
@@ -64,6 +68,20 @@ struct FunctionResolver {
             )
         }
         return table.type(atPath: context.typePath, from: context.file, localOwners: [])
+    }
+
+    /// The innermost type a shorter prefix of a non-local type path names.
+    private static func enclosingType(_ context: FunctionContext, table: SymbolTable) -> TypeKey? {
+        guard context.localOwner == nil else {
+            return nil
+        }
+        for length in stride(from: context.typePath.count - 1, to: 0, by: -1) {
+            let prefix = Array(context.typePath.prefix(length))
+            if let key = table.type(atPath: prefix, from: context.file, localOwners: []) {
+                return key
+            }
+        }
+        return nil
     }
 
     /// Resolves a bare value name from its lookup results (Spec §7.2).
@@ -104,7 +122,8 @@ struct FunctionResolver {
 
     /// Classifies an uppercase name in expression position (Spec §7.3).
     func classifyCandidate(_ name: String, lookup: [StoredLookupResult]) -> CandidateClass {
-        guard context.knownModules.contains(name) == false else {
+        // A module name, unless a module type of that name shadows it: `Shop.Item()` in Shop.
+        if context.knownModules.contains(name), isModuleQualifier(name) {
             return .notCandidate
         }
         let value = resolveValue(name, lookup: lookup)

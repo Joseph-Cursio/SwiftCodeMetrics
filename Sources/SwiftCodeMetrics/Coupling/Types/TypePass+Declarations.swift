@@ -15,7 +15,7 @@ extension TypePass {
                 typePath: fact.path,
                 extensionPathLength: fact.extensionPathLength,
                 localOwner: fact.localTo,
-                enclosingRecords: fact.localTo.map { [$0] } ?? [],
+                enclosingRecords: fact.visibleRecords,
                 genericParameters: fact.genericParameters + fact.associatedTypes,
                 isTypeLevel: false,
                 file: fact.file
@@ -37,7 +37,7 @@ extension TypePass {
                 typePath: parentPath,
                 extensionPathLength: isTopLevelLocal ? 0 : min(fact.extensionPathLength, parentPath.count),
                 localOwner: isTopLevelLocal ? fact.enclosingLocalOwner : fact.localTo,
-                enclosingRecords: fact.localTo.map { [$0] } ?? [],
+                enclosingRecords: fact.visibleRecords,
                 genericParameters: fact.genericParameters + fact.associatedTypes,
                 isTypeLevel: false,
                 file: fact.file
@@ -52,6 +52,29 @@ extension TypePass {
             context: FunctionContext(
                 typePath: fact.extended.extensionPath(in: table.module),
                 extensionPathLength: fact.extended.extensionPath(in: table.module).count,
+                localOwner: nil,
+                enclosingRecords: [],
+                genericParameters: [],
+                isTypeLevel: false,
+                file: fact.file
+            ),
+            typeNames: fact.declaration.typeNames
+        )
+    }
+
+    /// A resolver for an extension's inheritance clause, which Swift looks
+    /// up where the extension is written: the extended type's nested types
+    /// and member typealiases are not visible, so `extension Outer: Delegate`
+    /// with a nested `Outer.Delegate` conforms to the top-level Delegate.
+    func clauseResolver(for fact: ExtensionDeclFact) -> FunctionResolver {
+        var parentPath = Array(fact.extended.extensionPath(in: table.module).dropLast())
+        if SpelledType.selector(of: parentPath) != nil, parentPath.count == 1 {
+            parentPath = []
+        }
+        return resolver(
+            context: FunctionContext(
+                typePath: parentPath,
+                extensionPathLength: parentPath.count,
                 localOwner: nil,
                 enclosingRecords: [],
                 genericParameters: [],
@@ -77,15 +100,14 @@ extension TypePass {
         return FunctionResolver(table: table, raw: raw, imports: importsByFile[context.file] ?? [], options: options)
     }
 
-    /// Conformances from an inheritance clause; a class's first entry is
-    /// skipped when it is its superclass or possible superclass (Spec §9.1).
+    /// Conformances from an inheritance clause; a class's superclass is
+    /// taken out first, by withoutSuperclass (Spec §9.1).
     func conformances(
         _ inherited: [RawInherited],
         resolver: FunctionResolver,
-        isConditional: Bool,
-        skipsFirst: Bool
+        isConditional: Bool
     ) -> [ConformanceFact] {
-        inherited.dropFirst(skipsFirst ? 1 : 0).flatMap { entry -> [ConformanceFact] in
+        inherited.flatMap { entry -> [ConformanceFact] in
             guard let type = entry.type else {
                 return [ConformanceFact(name: entry.name, target: nil, isConditional: isConditional)]
             }
@@ -144,6 +166,21 @@ extension TypePass {
                 return nil
             }
             return tagged
+        }
+    }
+
+    /// A class's inherited names without its superclass: the first name
+    /// when it can be one, or the module class anywhere in a first-entry
+    /// composition, so `class Card: Themed & Base` conforms to Themed.
+    func withoutSuperclass(_ inherited: [RawInherited], resolver: FunctionResolver) -> [RawInherited] {
+        guard inherited.filter({ $0.entry == 0 }).count > 1 else {
+            return isPossibleSuperclass(inherited.first, resolver: resolver) ? Array(inherited.dropFirst()) : inherited
+        }
+        return inherited.filter { name in
+            guard name.entry == 0, let type = name.type else {
+                return true
+            }
+            return table.moduleClass(type, from: resolver.context) == nil
         }
     }
 

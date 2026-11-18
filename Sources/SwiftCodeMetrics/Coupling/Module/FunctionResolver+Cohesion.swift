@@ -76,6 +76,38 @@ extension FunctionResolver {
         return place == .own && reachesInherited ? .inherited : place
     }
 
+    /// The names whose nearest declaration, superclass by superclass from
+    /// the nearest, is a stored instance property.
+    private static func nearestStorage(_ chain: [[MemberFact]]) -> Set<String> {
+        var seen: Set<String> = []
+        var stored: Set<String> = []
+        for members in chain {
+            let properties = members.filter { $0.isTypeLevel == false && $0.kind.isProperty }
+            for member in properties where seen.contains(member.name) == false {
+                if member.kind == .storedProperty {
+                    stored.insert(member.name)
+                }
+            }
+            seen.formUnion(properties.map(\.name))
+        }
+        return stored
+    }
+
+    /// Files an inherited use: a touch candidate when it reads inherited
+    /// storage, otherwise a reference (a method, a computed override).
+    private static func fileInherited(
+        _ name: String,
+        call: MemberCall?,
+        sets: MemberSets,
+        into references: inout SelfReferences
+    ) {
+        if sets.readsInheritedStorage(name, call: call) {
+            references.inherited.insert(name)
+        } else {
+            references.inheritedReferences.insert(name)
+        }
+    }
+
     /// The function's resolved uses of its own type's members.
     func selfReferences() -> SelfReferences {
         var references = SelfReferences()
@@ -90,7 +122,8 @@ extension FunctionResolver {
             classifySelfMember(written, sets: sets, into: &references)
         }
         for written in raw.cohesion.superMembers {
-            references.inherited.insert(Self.superMemberName(written, inherited: sets.inherited))
+            let name = Self.superMemberName(written, inherited: sets.inherited)
+            Self.fileInherited(name, call: Self.compound(written), sets: sets, into: &references)
         }
         for call in raw.calls {
             classifyCall(call, sets: sets, into: &references)
@@ -100,7 +133,7 @@ extension FunctionResolver {
             if sets.stored.contains(call.name), references.calls.contains(memberCall),
                sets.methods.contains(memberCall) == false {
                 if sets.inheritedMethods.contains(memberCall) {
-                    references.inherited.insert(call.name)
+                    references.inheritedReferences.insert(call.name)
                 } else {
                     references.memberNames.insert(call.name)
                 }
@@ -120,7 +153,8 @@ extension FunctionResolver {
 
     /// The member names of `owner` and its in-module superclasses.
     private func memberSets(of owner: TypeKey, entry: TypeEntry) -> MemberSets {
-        let inheritedMembers = table.superclasses(of: owner).flatMap { table.entries[$0]?.members ?? [] }
+        let chain = table.superclasses(of: owner).map { table.entries[$0]?.members ?? [] }
+        let inheritedMembers = chain.flatMap(\.self)
         let isProperty: (MemberFact) -> Bool = { member in
             member.isTypeLevel == false && (member.kind == .storedProperty || member.kind == .computedProperty)
         }
@@ -134,7 +168,8 @@ extension FunctionResolver {
             stored: Set(entry.members.filter { $0.kind == .storedProperty && $0.isTypeLevel == false }.map(\.name)),
             // Only instance methods are reachable from an instance call.
             methods: Set(entry.members.filter(isMethod).map(call)),
-            inheritedMethods: Set(inheritedMembers.filter(isMethod).map(call))
+            inheritedMethods: Set(inheritedMembers.filter(isMethod).map(call)),
+            inheritedStorage: Self.nearestStorage(chain)
         )
     }
 
@@ -143,30 +178,48 @@ extension FunctionResolver {
     /// again as `a` (rule 4).
     private func classifySelfMember(_ written: String, sets: MemberSets, into references: inout SelfReferences) {
         if let compound = Self.compound(written) {
-            let place = sets.place(compound.name)
-            if place == .own {
-                references.calls.insert(compound)
-            } else {
-                file(compound.name, at: place, into: &references)
-            }
+            fileCompound(compound, place: sets.place(compound.name), sets: sets, into: &references)
             return
         }
         let place = Self.refine(sets.place(written), written, call: nil, sets: sets)
         if place == .undeclared, let stripped = Self.wrapperBase(written), sets.place(stripped) != .undeclared {
-            file(stripped, at: Self.refine(sets.place(stripped), stripped, call: nil, sets: sets), into: &references)
+            let strippedPlace = Self.refine(sets.place(stripped), stripped, call: nil, sets: sets)
+            file(stripped, at: strippedPlace, call: nil, sets: sets, into: &references)
         } else {
-            file(written, at: place, into: &references)
+            file(written, at: place, call: nil, sets: sets, into: &references)
         }
     }
 
-    /// Files a `self.name` read by where it is declared.
-    private func file(_ name: String, at place: MemberPlace, into references: inout SelfReferences) {
+    /// A compound `f(y:)` references the one overload its labels name: an
+    /// own one, else an inherited one, else every own `f` (rule 5).
+    private func fileCompound(
+        _ compound: MemberCall,
+        place: MemberPlace,
+        sets: MemberSets,
+        into references: inout SelfReferences
+    ) {
+        let isInheritedOnly = sets.methods.contains(compound) == false && sets.inheritedMethods.contains(compound)
+        if place == .own, isInheritedOnly == false {
+            references.calls.insert(compound)
+        } else {
+            file(compound.name, at: place == .own ? .inherited : place, call: compound, sets: sets, into: &references)
+        }
+    }
+
+    /// Files a `self.name` read or call by where it is declared.
+    private func file(
+        _ name: String,
+        at place: MemberPlace,
+        call: MemberCall?,
+        sets: MemberSets,
+        into references: inout SelfReferences
+    ) {
         switch place {
         case .own:
             references.memberNames.insert(name)
 
         case .inherited:
-            references.inherited.insert(name)
+            Self.fileInherited(name, call: call, sets: sets, into: &references)
 
         case .undeclared:
             references.unresolved.insert(name)
@@ -177,12 +230,7 @@ extension FunctionResolver {
     /// `_a`) that reach member lookup are tried again without the prefix.
     private func classifyBare(_ name: RawName, sets: MemberSets, into references: inout SelfReferences) {
         var resolution = resolveValue(name.name, lookup: name.lookup)
-        // An uppercase name in type position is a type unless it resolves to a member: `ID.lowercased()`.
-        if CalleeReader.startsUppercase(name.name), name.isTypePosition, resolution.isMember == false {
-            return
-        }
-        // A module qualifier, lowercase too: `os.Logger(...)`.
-        if name.isTypePosition, context.knownModules.contains(name.name), resolution.isMember == false {
+        if isTypeOrModuleName(name, resolution) {
             return
         }
         if case .ownMember = resolution, name.isCompound == false,
@@ -190,22 +238,26 @@ extension FunctionResolver {
             resolution = .inheritedMember
         }
         // `f(y:)` written bare references the one overload its labels name.
-        if name.isCompound, case .ownMember = resolution {
-            references.calls.insert(MemberCall(name: name.name, labels: name.labels))
+        if name.isCompound, resolution.isMember {
+            var place = MemberPlace.inherited
+            if case .ownMember = resolution {
+                place = .own
+            }
+            fileCompound(MemberCall(name: name.name, labels: name.labels), place: place, sets: sets, into: &references)
             return
         }
         guard let stripped = Self.wrapperBase(name.name) else {
-            record(name.name, resolution, lookup: name.lookup, into: &references)
+            record(name.name, resolution, lookup: name.lookup, sets: sets, into: &references)
             return
         }
         switch resolution {
         case .enumCase, .freeFunction, .global, .inheritedMember, .ownMember, .staticMember:
             // `_name` declared as is (a member, a global, a free function): not a wrapper name.
-            record(name.name, resolution, lookup: name.lookup, into: &references)
+            record(name.name, resolution, lookup: name.lookup, sets: sets, into: &references)
 
         case .notCoupling where name.name.hasPrefix("$") == false:
             // A local or file-level `_a` that lexical lookup finds is declared.
-            record(name.name, resolution, lookup: name.lookup, into: &references)
+            record(name.name, resolution, lookup: name.lookup, sets: sets, into: &references)
 
         case .notCoupling, .unresolved:
             // An undeclared `_a`, or any `$a`, is retried as `a`.
@@ -214,9 +266,19 @@ extension FunctionResolver {
                 if case .ownMember = retried, sets.reachesInheritedProperty(stripped) {
                     retried = .inheritedMember
                 }
-                record(stripped, retried, lookup: name.lookup, into: &references)
+                record(stripped, retried, lookup: name.lookup, sets: sets, into: &references)
             }
         }
+    }
+
+    /// An uppercase name, or a module name (`os.Logger`), in type position
+    /// that resolves to no member: a type or module, not a use. An
+    /// uppercase member is a use: `ID.lowercased()`.
+    private func isTypeOrModuleName(_ name: RawName, _ resolution: ValueResolution) -> Bool {
+        guard name.isTypePosition, resolution.isMember == false else {
+            return false
+        }
+        return CalleeReader.startsUppercase(name.name) || context.knownModules.contains(name.name)
     }
 
     /// Files a bare name by its §7.2 resolution.
@@ -224,6 +286,7 @@ extension FunctionResolver {
         _ name: String,
         _ resolution: ValueResolution,
         lookup: [StoredLookupResult],
+        sets: MemberSets,
         into references: inout SelfReferences
     ) {
         switch resolution {
@@ -231,7 +294,7 @@ extension FunctionResolver {
             references.memberNames.insert(name)
 
         case .inheritedMember:
-            references.inherited.insert(name)
+            Self.fileInherited(name, call: nil, sets: sets, into: &references)
 
         case .unresolved:
             if Self.reachesMembers(lookup), isPlatformFreeFunction(name) == false {
@@ -252,11 +315,12 @@ extension FunctionResolver {
             if place == .own {
                 references.calls.insert(MemberCall(name: call.name, labels: call.labels))
             } else {
-                file(call.name, at: place, into: &references)
+                file(call.name, at: place, call: memberCall, sets: sets, into: &references)
             }
 
         case .superMember:
-            references.inherited.insert(call.name)
+            let memberCall = MemberCall(name: call.name, labels: call.labels)
+            Self.fileInherited(call.name, call: memberCall, sets: sets, into: &references)
 
         case .bare(let lookup):
             classifyBareCall(call, lookup: lookup, sets: sets, into: &references)
@@ -274,15 +338,16 @@ extension FunctionResolver {
         sets: MemberSets,
         into references: inout SelfReferences
     ) {
+        let memberCall = MemberCall(name: call.name, labels: call.labels)
         switch resolveValue(call.name, lookup: lookup) {
-        case .ownMember where sets.reachesInheritedProperty(callOf: MemberCall(name: call.name, labels: call.labels)):
-            references.inherited.insert(call.name)
+        case .ownMember where sets.reachesInheritedProperty(callOf: memberCall):
+            Self.fileInherited(call.name, call: memberCall, sets: sets, into: &references)
 
         case .ownMember:
-            references.calls.insert(MemberCall(name: call.name, labels: call.labels))
+            references.calls.insert(memberCall)
 
         case .inheritedMember:
-            references.inherited.insert(call.name)
+            Self.fileInherited(call.name, call: memberCall, sets: sets, into: &references)
 
         case .unresolved:
             let isKnownFunction = table.isFreeFunction(call.name, from: context.file)

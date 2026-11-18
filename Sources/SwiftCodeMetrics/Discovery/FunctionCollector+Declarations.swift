@@ -58,7 +58,7 @@ extension FunctionCollector {
             let facts = MemberFacts(
                 node.memberBlock,
                 typeName: extended.components.last ?? "",
-                typePath: extended.extensionPath,
+                typePath: extended.extensionPath(in: context.module),
                 file: context.file ?? "",
                 localTo: nil,
                 module: context.module

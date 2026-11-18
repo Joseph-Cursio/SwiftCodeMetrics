@@ -53,7 +53,7 @@ extension FunctionCollector {
             owner: node.id,
             pathComponent: extended + whereClause,
             isFileScoped: isFileScoped,
-            nominal: TypeSpelling.spelled(node.extendedType)?.extensionPath ?? [extended],
+            nominal: TypeSpelling.spelled(node.extendedType)?.extensionPath(in: context.module) ?? [extended],
             isExtension: true,
             genericParameters: []
         )))

@@ -51,4 +51,14 @@ struct TypeEntry {
         }
         return (first, isConflicting)
     }
+
+    /// Drops everything extensions added, keeping the primary declarations.
+    mutating func resetToDeclarations() {
+        members = declarations.flatMap(\.members)
+        aliasVariants = [:]
+        for alias in declarations.flatMap(\.typealiases) {
+            add(alias)
+        }
+        extensionFacts = []
+    }
 }

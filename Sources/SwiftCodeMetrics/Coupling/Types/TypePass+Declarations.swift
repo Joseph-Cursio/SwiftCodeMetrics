@@ -28,8 +28,8 @@ extension TypePass {
     func resolver(for fact: ExtensionDeclFact) -> FunctionResolver {
         resolver(
             context: FunctionContext(
-                typePath: fact.extended.components,
-                extensionPathLength: fact.extended.components.count,
+                typePath: fact.extended.extensionPath(in: table.module),
+                extensionPathLength: fact.extended.extensionPath(in: table.module).count,
                 localOwner: nil,
                 enclosingRecords: [],
                 genericParameters: [],

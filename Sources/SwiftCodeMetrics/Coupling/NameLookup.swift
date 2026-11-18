@@ -107,7 +107,7 @@ enum NameLookup {
                 let extended = TypeSpelling.spelled(extensionDecl.extendedType)?.components ?? []
                 components.insert(contentsOf: extended, at: 0)
             } else if let named = ancestor.asProtocol(NamedDeclSyntax.self), ancestor.isProtocol(DeclGroupSyntax.self) {
-                components.insert(named.name.text, at: 0)
+                components.insert(SyntaxFacts.name(named.name), at: 0)
                 if SyntaxFacts.isLocal(ancestor) {
                     return [localMarker] + components
                 }

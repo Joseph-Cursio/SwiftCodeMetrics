@@ -37,7 +37,7 @@ extension FunctionCollector {
             owner: owner,
             pathComponent: name,
             isFileScoped: SyntaxFacts.isFileScoped(modifiers),
-            nominal: [name],
+            nominal: [SyntaxFacts.bare(name)],
             isExtension: false,
             genericParameters: genericParameters
         )))

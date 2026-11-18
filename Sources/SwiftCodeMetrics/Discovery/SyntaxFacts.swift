@@ -15,6 +15,12 @@ enum SyntaxFacts {
         token.identifier?.name ?? token.text
     }
 
+    /// A name written as text, without backticks.
+    static func bare(_ text: String) -> String {
+        let inner = text.dropFirst().dropLast()
+        return text.hasPrefix("`") && text.hasSuffix("`") && inner.isEmpty == false ? String(inner) : text
+    }
+
     /// Whether the modifiers make a declaration `private` or `fileprivate`.
     /// `private(set)` restricts only the setter, so it doesn't count.
     static func isFileScoped(_ modifiers: DeclModifierListSyntax) -> Bool {

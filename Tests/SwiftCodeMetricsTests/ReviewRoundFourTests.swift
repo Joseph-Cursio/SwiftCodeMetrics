@@ -51,6 +51,20 @@ struct ReviewRoundFourTests {
 
         #expect(record?.commonCoupling?.globals.isEmpty == true)
     }
+    @Test("a backticked nested type resolves from expressions and type positions alike")
+    func backtickedType() {
+        let record = record("isWord()", """
+        struct Token {
+            enum `Type` { case word, number }
+            let kind: `Type`
+            func isWord() -> Bool { kind == `Type`.word }
+        }
+        """)
+
+        let type = record?.typeReferences.first { $0.spelling == "Type" }
+        #expect(type?.bucket == .module)
+        #expect(type?.target?.path == ["Token", "Type"])
+    }
 
     private func record(_ name: String, _ source: String) -> FunctionRecord? {
         Modules.record(name, in: Modules.analysis("Lib", [("A.swift", source)]))

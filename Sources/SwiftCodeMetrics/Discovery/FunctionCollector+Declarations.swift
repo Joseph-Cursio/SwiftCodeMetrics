@@ -12,12 +12,12 @@ extension FunctionCollector {
     /// Records a type declaration and opens its scope.
     func openType(_ node: some DeclGroupSyntax & NamedDeclSyntax, kind: TypeKind) {
         let lexical = lexicalPosition().enteringType()
-        let name = node.name.text
+        let name = SyntaxFacts.name(node.name)
         let path = lexical.typePath + [name]
         let genericClause = Syntax(node).asProtocol(WithGenericParametersSyntax.self)?.genericParameterClause
         var generics = TypeSpelling.names(of: genericClause)
         let primaryTypes = node.as(ProtocolDeclSyntax.self)?.primaryAssociatedTypeClause?.primaryAssociatedTypes
-        generics += primaryTypes?.map(\.name.text) ?? []
+        generics += primaryTypes?.map { SyntaxFacts.name($0.name) } ?? []
         let facts = MemberFacts(
             node.memberBlock,
             typeName: name,
@@ -44,7 +44,7 @@ extension FunctionCollector {
             typealiases: facts.typealiases
         ))
         pushType(
-            name: name,
+            name: node.name.text,
             modifiers: node.modifiers,
             owner: node.id,
             genericParameters: generics + facts.associatedTypes

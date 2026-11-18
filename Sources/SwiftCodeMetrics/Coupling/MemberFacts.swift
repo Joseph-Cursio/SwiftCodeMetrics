@@ -54,7 +54,7 @@ struct MemberFacts {
     ) -> TypealiasFact {
         let target = alias.initializer.value
         return TypealiasFact(
-            name: alias.name.text,
+            name: SyntaxFacts.name(alias.name),
             target: TypeSpelling.spelled(target),
             closure: TypeSpelling.closureShape(target),
             typePath: typePath,
@@ -132,7 +132,7 @@ struct MemberFacts {
         } else if let alias = decl.as(TypeAliasDeclSyntax.self) {
             typealiases.append(Self.typealiasFact(alias, typePath: typePath, file: file, localTo: localTo))
         } else if let associated = decl.as(AssociatedTypeDeclSyntax.self) {
-            associatedTypes.append(associated.name.text)
+            associatedTypes.append(SyntaxFacts.name(associated.name))
         } else {
             readCallable(decl)
         }

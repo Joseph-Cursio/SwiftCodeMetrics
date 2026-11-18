@@ -18,7 +18,7 @@ enum TypeDeclarationReader {
         let genericClause = Syntax(node).asProtocol(WithGenericParametersSyntax.self)?.genericParameterClause
         for parameter in genericClause?.parameters ?? [] {
             if let constraint = parameter.inheritedType {
-                reader.collect(Syntax(constraint), kind: .constraint, isWeakOrUnowned: false)
+                reader.readGenericConstraint(constraint)
             }
         }
         if let whereClause = node.genericWhereClause {

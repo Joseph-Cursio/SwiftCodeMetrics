@@ -67,7 +67,7 @@ struct TypePass {
             unresolvedExtensions: table.unresolvedExtensions.map { fact in
                 extensionFact(fact, conformances: conformances(
                     fact.declaration.inherited,
-                    resolver: resolver(for: fact),
+                    resolver: clauseResolver(for: fact),
                     isConditional: fact.declaration.isConstrained
                 ))
             }
@@ -137,13 +137,14 @@ struct TypePass {
         }
         for fact in entry.extensionFacts {
             let resolver = resolver(for: fact)
-            let site = DeclarationSite(owner: entry, isExtension: true, clauseResolver: resolver)
+            let clause = clauseResolver(for: fact)
+            let site = DeclarationSite(owner: entry, isExtension: true, clauseResolver: clause)
             declarationReferences += add(fact.declaration, at: site, resolver: resolver, index: index, into: &edges)
             // `extension IntBox: P` where `IntBox = Box<Int>` is constrained too.
             let isBoundAlias = table.reachesBoundGeneric(fact.extended, from: resolver.context)
             let own = self.conformances(
                 fact.declaration.inherited,
-                resolver: resolver,
+                resolver: clause,
                 isConditional: fact.declaration.isConstrained || isBoundAlias
             )
             conformances += own
@@ -187,8 +188,9 @@ struct TypePass {
         var entryKinds: [Int: EdgeKind] = [:]
         var references: [TypeReference] = []
         for name in declaration.typeNames {
-            // Inheritance-clause names resolve outside the type's body.
-            let nameResolver = name.inheritanceEntry == nil ? resolver : site.clauseResolver
+            // Inheritance-clause names and generic constraints resolve outside the type's body.
+            let isOutside = name.inheritanceEntry != nil || name.isInGenericClause
+            let nameResolver = isOutside ? site.clauseResolver : resolver
             guard let reference = nameResolver.typeReference(for: name) else {
                 // `struct Client: Services` where `Services = Fetching & Caching`;
                 // elsewhere, `let deps: Services` names each member with its own kind.

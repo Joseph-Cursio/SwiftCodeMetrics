@@ -103,4 +103,31 @@ struct TypeReviewRoundSixTests {
         #expect(card.conformances.map(\.name) == ["Themed"])
         #expect(card.cohesion.attributeCount == 1)
     }
+
+    @Test("extension clauses and generic constraints resolve outside the body")
+    func clausesOutsideBodies() {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            protocol Delegate {}
+            struct Plain: Delegate {}
+            struct Outer { protocol Delegate {} }
+            extension Outer: Delegate {}
+            protocol Loading {}
+            struct Store { typealias Loading = Int }
+            extension Store: Loading {}
+            protocol Shape {}
+            struct Circle: Shape {}
+            struct Canvas<Item: Shape> {
+                enum Shape { case round }
+                var items: [Item]
+            }
+            """)
+        ])
+
+        #expect(Modules.type("Delegate", in: analysis)?.protocolFacts?.conformerCount == 2)
+        #expect(Modules.type("Outer.Delegate", in: analysis)?.protocolFacts?.conformerCount == 0)
+        #expect(Modules.type("Loading", in: analysis)?.protocolFacts?.conformerCount == 1)
+        #expect(Modules.type("Canvas", in: analysis)?.coupling.ceTotal == 1)
+        #expect(Modules.type("Shape", in: analysis)?.coupling.caWithinModule == 2)
+    }
 }

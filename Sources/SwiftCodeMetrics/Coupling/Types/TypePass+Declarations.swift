@@ -62,6 +62,29 @@ extension TypePass {
         )
     }
 
+    /// A resolver for an extension's inheritance clause, which Swift looks
+    /// up where the extension is written: the extended type's nested types
+    /// and member typealiases are not visible, so `extension Outer: Delegate`
+    /// with a nested `Outer.Delegate` conforms to the top-level Delegate.
+    func clauseResolver(for fact: ExtensionDeclFact) -> FunctionResolver {
+        var parentPath = Array(fact.extended.extensionPath(in: table.module).dropLast())
+        if SpelledType.selector(of: parentPath) != nil, parentPath.count == 1 {
+            parentPath = []
+        }
+        return resolver(
+            context: FunctionContext(
+                typePath: parentPath,
+                extensionPathLength: parentPath.count,
+                localOwner: nil,
+                enclosingRecords: [],
+                genericParameters: [],
+                isTypeLevel: false,
+                file: fact.file
+            ),
+            typeNames: fact.declaration.typeNames
+        )
+    }
+
     /// A resolver for declaration-level names in `context`.
     private func resolver(context: FunctionContext, typeNames: [RawTypeName]) -> FunctionResolver {
         let raw = RawFunctionReferences(

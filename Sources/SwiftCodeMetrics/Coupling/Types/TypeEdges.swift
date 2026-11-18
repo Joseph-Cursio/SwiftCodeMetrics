@@ -29,15 +29,6 @@ struct TypeEdges {
     /// The owner's family root.
     let family: TypeKey
 
-    /// A platform spelling with any platform module qualifier dropped.
-    private static func unqualified(_ spelling: String) -> String {
-        guard let dot = spelling.firstIndex(of: "."),
-              PlatformModules.harvested.contains(String(spelling[..<dot])) else {
-            return spelling
-        }
-        return String(spelling[spelling.index(after: dot)...])
-    }
-
     /// Adds one reference with the kind it contributes.
     mutating func add(
         _ reference: TypeReference,
@@ -60,11 +51,11 @@ struct TypeEdges {
             }
 
         case .platform:
-            // `Swift.Int` and `Int` are one platform name.
-            platformNames.insert(Self.unqualified(reference.spelling))
+            // `Swift.Int`, `Int` and `Self` in `extension Int` are one platform name.
+            platformNames.insert(reference.resolvedName ?? reference.spelling)
 
         case .external:
-            externalNames.insert(reference.spelling)
+            externalNames.insert(reference.resolvedName ?? reference.spelling)
 
         case nil:
             if reference.resolution == .ambiguous {

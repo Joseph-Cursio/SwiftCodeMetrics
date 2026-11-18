@@ -18,10 +18,15 @@ struct SpelledType: Codable, Hashable {
         components.joined(separator: ".")
     }
 
-    /// The path an extension of this name is keyed by: a `Module::` selector
-    /// becomes a leading component, so `extension Swift::Result` keys like
-    /// `extension Swift.Result`.
-    var extensionPath: [String] {
-        (moduleSelector.map { [$0] } ?? []) + components
+    /// The path an extension of this name is keyed by in `module`: another
+    /// module's selector becomes a leading component, so `extension
+    /// Swift::Result` keys like `extension Swift.Result`, and the module's
+    /// own selector drops, so `extension Shop::Item` in Shop is `Item` even
+    /// when Shop declares a type named `Shop`.
+    func extensionPath(in module: String) -> [String] {
+        guard let selector = moduleSelector, selector != module else {
+            return components
+        }
+        return [selector] + components
     }
 }

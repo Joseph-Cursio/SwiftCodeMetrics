@@ -143,6 +143,10 @@ enum TypeSpelling {
         if let attributed = type.as(AttributedTypeSyntax.self) {
             return compositionMembers(attributed.baseType)
         }
+        // `typealias Deps = any HasAPI & HasStore`.
+        if let existential = type.as(SomeOrAnyTypeSyntax.self) {
+            return compositionMembers(existential.constraint)
+        }
         guard let composition = type.as(CompositionTypeSyntax.self) else {
             return []
         }

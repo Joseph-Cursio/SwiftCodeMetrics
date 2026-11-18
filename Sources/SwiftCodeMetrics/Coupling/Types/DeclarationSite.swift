@@ -13,4 +13,6 @@ struct DeclarationSite {
     /// Whether the names are written on an extension, where every
     /// inheritance entry is a protocol.
     let isExtension: Bool
+    /// Where the inheritance clause's names resolve from.
+    let clauseResolver: FunctionResolver
 }

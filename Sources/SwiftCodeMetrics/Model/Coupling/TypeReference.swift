@@ -20,4 +20,9 @@ public struct TypeReference: Sendable, Codable, Hashable {
     public var target: TypeKey?
     /// How sure the target is.
     public var resolution: Resolution
+    /// For the platform and external buckets, the type the spelling names,
+    /// qualifiers stripped and typealiases expanded: `Int` for `Swift.Int`,
+    /// `UUID` for a member `typealias ID = UUID`, `String` for `Self` in
+    /// `extension String`. Names are counted by it (Spec §9.4).
+    public var resolvedName: String?
 }

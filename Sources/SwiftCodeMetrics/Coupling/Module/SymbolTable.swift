@@ -10,6 +10,9 @@
 
 /// One module's declarations, merged.
 final class SymbolTable {
+    /// How many times merged extensions are re-resolved before the table settles.
+    private static let maximumSettlingPasses = 4
+
     /// The module name.
     let module: String
     /// The platform names.
@@ -104,65 +107,17 @@ final class SymbolTable {
         let spelled = SpelledType(components: path, moduleSelector: nil)
         let resolution = resolve(spelled, from: qualifierContext(file: file))
         // A type nested in a group resolves to the module type: `Swift.String.Limits`, `Celsius.Scale`.
-        let resolved = resolution.moduleKey ?? groupKey(for: path, resolution: resolution)
+        let resolved = resolution.moduleKey ?? groupKey(for: path, from: file)
         pathMemo[file, default: [:]][path] = resolved
         return resolved
     }
 
-    /// The extension group a written path names, by the type it resolves to
-    /// from its file: a file-private `typealias Num = Double` in one file and
-    /// `= Int` in another name different groups.
-    func groupKey(for path: [String], resolution: TypeResolution) -> TypeKey? {
-        var candidates = [path]
-        switch resolution {
-        case .external(let name), .platform(let name):
-            candidates.insert(name.split(separator: ".").map(String.init), at: 0)
-
-        case .ambiguous, .genericParameter, .module, .opaqueAlias, .unresolved:
-            break
-        }
-        return candidates.lazy.compactMap { self.extensionGroups[$0] }.first
-    }
-
-    /// The enclosing types of `key`, innermost first, the type itself included.
-    func chain(from key: TypeKey) -> [TypeKey] {
-        var visited: Set<TypeKey> = []
-        return chain(from: key, visited: &visited)
-    }
-
-    /// The chain, with a guard against cycles through local owners.
-    private func chain(from key: TypeKey, visited: inout Set<TypeKey>) -> [TypeKey] {
-        guard visited.insert(key).inserted else {
-            return []
-        }
-        var chain = [key]
-        var path = key.path
-        while path.count > 1 {
-            path.removeLast()
-            let localParent = key.localTo.flatMap { locals[$0]?[path] }
-            let parent = localParent ?? visible(byPath[path] ?? [], from: key.file ?? "").first ?? extensionGroups[path]
-            if let parent {
-                chain.append(parent)
-            }
-        }
-        // A local type also sees the types around the function that owns it.
-        guard let owner = key.localTo, let first = key.path.first, let outermost = locals[owner]?[[first]],
-              let entry = entries[outermost], entry.enclosingTypePath.isEmpty == false else {
-            return chain
-        }
-        let enclosingPath = entry.enclosingLocalOwner == nil
-            ? entry.enclosingTypePath
-            : [NameLookup.localMarker] + entry.enclosingTypePath
-        let localOwners = entry.enclosingLocalOwner.map { [$0] } ?? []
-        if let enclosing = type(atPath: enclosingPath, from: entry.file, localOwners: localOwners) {
-            chain += self.chain(from: enclosing, visited: &visited)
-        }
-        return chain
-    }
-
-    /// The keys visible from `file`: not file-scoped, or declared there.
-    func visible(_ keys: [TypeKey], from file: String) -> [TypeKey] {
-        keys.filter { $0.file == nil || $0.file == file }
+    /// The extension group a written path names from `file`: the key its
+    /// extension registers under, so a file-private `typealias Num = Double`
+    /// in one file and `= Int` in another name different groups, and
+    /// `extension Swift.Result` next to a private `Result` keeps its own.
+    func groupKey(for path: [String], from file: String) -> TypeKey? {
+        extensionGroups[groupPath(for: path, from: file)]
     }
 
     // MARK: - Building
@@ -237,6 +192,7 @@ final class SymbolTable {
     private func mergeExtensions(types: [TypeFact], extensions: [ExtensionDeclFact]) {
         var pendingTypes = types
         var pendingExtensions = extensions
+        var merged: [(fact: ExtensionDeclFact, key: TypeKey)] = []
         var progress = true
         while progress || pendingTypes.isEmpty == false {
             if progress == false {
@@ -244,13 +200,7 @@ final class SymbolTable {
                 // under the group's key: `extension String { enum Limits }`. The
                 // shortest prefixes go first, so `extension Celsius.Unit { struct
                 // Deep }` then finds `Unit` under `Double`.
-                let shortest = pendingTypes.map(\.extensionPathLength).min() ?? 0
-                for fact in pendingTypes where fact.extensionPathLength == shortest {
-                    let prefix = Array(fact.path.prefix(fact.extensionPathLength))
-                    register(fact, path: groupPath(for: prefix, from: fact.file) + fact.path.dropFirst(prefix.count))
-                }
-                pendingTypes.removeAll { $0.extensionPathLength == shortest }
-                resetMemos()
+                pendingTypes = registerInGroups(pendingTypes)
             }
             progress = false
             pendingTypes = pendingTypes.filter { fact in
@@ -264,20 +214,80 @@ final class SymbolTable {
                 return false
             }
             pendingExtensions = pendingExtensions.filter { fact in
-                guard let key = type(atPath: fact.extended.extensionPath, from: fact.file, localOwners: []) else {
+                guard let key = target(of: fact) else {
                     return true
                 }
-                entries[key]?.members += fact.members
-                for alias in fact.typealiases {
-                    entries[key]?.add(alias)
-                }
-                entries[key]?.extensionFacts.append(fact)
+                merge(fact, into: key)
+                merged.append((fact, key))
                 resetMemos()
                 progress = true
                 return false
             }
         }
+        settle(&merged)
         registerExtensionGroups(pendingExtensions)
+    }
+
+    /// The module type an extension extends, if the table has it yet.
+    private func target(of fact: ExtensionDeclFact) -> TypeKey? {
+        type(atPath: fact.extended.extensionPath(in: module), from: fact.file, localOwners: [])
+    }
+
+    /// Adds an extension's members, typealiases and facts to `key`.
+    private func merge(_ fact: ExtensionDeclFact, into key: TypeKey) {
+        entries[key]?.members += fact.members
+        for alias in fact.typealiases {
+            entries[key]?.add(alias)
+        }
+        entries[key]?.extensionFacts.append(fact)
+    }
+
+    /// Registers the shortest pending types nested in groups, under the
+    /// group's key: `extension String { enum Limits }`. Shortest first, so
+    /// `extension Celsius.Unit { struct Deep }` then finds `Unit` under
+    /// `Double`; one whose prefix no longer resolves, because the table is
+    /// half built, waits for the next round. Returns the types still pending.
+    private func registerInGroups(_ pending: [TypeFact]) -> [TypeFact] {
+        let shortest = pending.map(\.extensionPathLength).min() ?? 0
+        var registered = false
+        var remaining: [TypeFact] = []
+        for fact in pending {
+            let prefix = Array(fact.path.prefix(fact.extensionPathLength))
+            let isHalfBuilt = registered && resolve(
+                SpelledType(components: prefix, moduleSelector: nil),
+                from: qualifierContext(file: fact.file)
+            ) == .unresolved
+            guard fact.extensionPathLength == shortest, isHalfBuilt == false else {
+                remaining.append(fact)
+                continue
+            }
+            register(fact, path: groupPath(for: prefix, from: fact.file) + fact.path.dropFirst(prefix.count))
+            registered = true
+            resetMemos()
+        }
+        return remaining
+    }
+
+    /// Resolves every merged extension again against the finished table and
+    /// moves the ones whose type changed: `extension Outer.Config` merged
+    /// into an inherited `Base.Config` before `extension Outer { typealias
+    /// Config = Settings }` was read belongs to Settings.
+    private func settle(_ merged: inout [(fact: ExtensionDeclFact, key: TypeKey)]) {
+        for _ in 0..<Self.maximumSettlingPasses {
+            resetMemos()
+            let targets = merged.map { target(of: $0.fact) ?? $0.key }
+            guard targets != merged.map(\.key) else {
+                return
+            }
+            for key in Set(merged.map(\.key) + targets) {
+                entries[key]?.resetToDeclarations()
+            }
+            for (index, target) in targets.enumerated() {
+                merge(merged[index].fact, into: target)
+                merged[index].key = target
+            }
+        }
+        resetMemos()
     }
 
     /// Extensions of a type the module does not declare form extension
@@ -286,11 +296,11 @@ final class SymbolTable {
         for fact in extensions {
             // `extension Feature.State` where `Feature` is a module type with no
             // nested `State` is an unresolved extension (Spec §2.2), not a group.
-            if isMissingNestedType(fact.extended.extensionPath, from: fact.file) {
+            if isMissingNestedType(fact.extended.extensionPath(in: module), from: fact.file) {
                 unresolvedExtensions.append(fact)
                 continue
             }
-            let path = groupPath(for: fact.extended.extensionPath, from: fact.file)
+            let path = groupPath(for: fact.extended.extensionPath(in: module), from: fact.file)
             let key = TypeKey(module: module, path: path)
             if entries[key] == nil {
                 entries[key] = TypeEntry(

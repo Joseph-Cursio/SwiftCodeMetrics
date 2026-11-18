@@ -24,12 +24,36 @@ extension TypePass {
         )
     }
 
+    /// A resolver for a type's inheritance clause, which Swift looks up
+    /// outside the type's body: its generic parameters are visible, its
+    /// nested types are not, so `class Outer: Base` with a nested `Outer.Base`
+    /// inherits the top-level Base. A top-level local type keeps its own
+    /// position, for the function around it.
+    func clauseResolver(for fact: TypeFact) -> FunctionResolver {
+        guard fact.path.count > 1 || fact.localTo == nil else {
+            return resolver(for: fact)
+        }
+        let parentPath = Array(fact.path.dropLast())
+        return resolver(
+            context: FunctionContext(
+                typePath: parentPath,
+                extensionPathLength: min(fact.extensionPathLength, parentPath.count),
+                localOwner: fact.localTo,
+                enclosingRecords: fact.localTo.map { [$0] } ?? [],
+                genericParameters: fact.genericParameters + fact.associatedTypes,
+                isTypeLevel: false,
+                file: fact.file
+            ),
+            typeNames: fact.declaration.typeNames
+        )
+    }
+
     /// A resolver inside an extension.
     func resolver(for fact: ExtensionDeclFact) -> FunctionResolver {
         resolver(
             context: FunctionContext(
-                typePath: fact.extended.components,
-                extensionPathLength: fact.extended.components.count,
+                typePath: fact.extended.extensionPath(in: table.module),
+                extensionPathLength: fact.extended.extensionPath(in: table.module).count,
                 localOwner: nil,
                 enclosingRecords: [],
                 genericParameters: [],
@@ -99,33 +123,29 @@ extension TypePass {
     }
 
     /// The conformance, refinement or inheritance references an
-    /// inheritance-clause typealias composition stands for.
+    /// inheritance-clause typealias composition stands for, every member
+    /// counted as if the composition were written: `Fetching & Hashable`
+    /// names the module protocol and the platform one.
     func compositionMembers(of name: RawTypeName, resolver: FunctionResolver, owner: TypeEntry) -> [TypeReference] {
-        table.compositionLeaves(of: name.type, from: resolver.context).compactMap { leaf in
-            guard case .module(let key) = table.resolve(leaf.type, from: leaf.position),
-                  let kind = table.entries[key]?.kind else {
-                return nil
+        let protocolKind: EdgeKind = owner.kind == .protocol ? .refinement : .conformance
+        return resolver.expandedReferences(for: name).compactMap { reference in
+            var tagged = reference
+            guard let key = reference.target else {
+                tagged.edgeKind = protocolKind
+                return tagged
             }
-            let edgeKind: EdgeKind
-            switch kind {
+            switch table.entries[key]?.kind {
             case .protocol:
-                edgeKind = owner.kind == .protocol ? .refinement : .conformance
+                tagged.edgeKind = protocolKind
 
             case .class where owner.kind == .class || owner.kind == .protocol:
                 // A superclass, or a protocol's class constraint.
-                edgeKind = .inheritance
+                tagged.edgeKind = .inheritance
 
-            case .actor, .class, .enum, .extensionGroup, .struct:
+            case .actor, .class, .enum, .extensionGroup, .struct, nil:
                 return nil
             }
-            return TypeReference(
-                spelling: leaf.type.spelling,
-                edgeKind: edgeKind,
-                utf8Offset: name.offset,
-                bucket: .module,
-                target: key,
-                resolution: .exact
-            )
+            return tagged
         }
     }
 

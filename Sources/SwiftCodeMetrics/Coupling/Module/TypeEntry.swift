@@ -19,10 +19,8 @@ struct TypeEntry {
     var members: [MemberFact]
     /// Nested types by simple name, merged extensions included.
     var nested: [String: [TypeKey]] = [:]
-    /// Member typealiases by name, merged extensions included.
-    var typealiases: [String: TypealiasFact] = [:]
-    /// Member typealiases whose `#if` variants name different targets.
-    var conflictingAliases: Set<String> = []
+    /// Member typealiases by name, every variant, merged extensions included.
+    private(set) var aliasVariants: [String: [TypealiasFact]] = [:]
     /// A file that declares it, for resolving its inherited types.
     var file: String
     /// For a local type: the type path around its owning function.
@@ -34,14 +32,33 @@ struct TypeEntry {
     /// The extensions merged into it.
     var extensionFacts: [ExtensionDeclFact] = []
 
-    /// Adds a member typealias. `#if` variants that name different targets
-    /// make the name ambiguous (Spec §7.3) rather than letting one win.
+    /// Adds a member typealias variant.
     mutating func add(_ alias: TypealiasFact) {
-        if let existing = typealiases[alias.name],
-           existing.target != alias.target || existing.closure != alias.closure
-            || existing.compositionMembers != alias.compositionMembers {
-            conflictingAliases.insert(alias.name)
+        aliasVariants[alias.name, default: []].append(alias)
+    }
+
+    /// The member typealias `name` as `file` sees it: a private one only in
+    /// its own file. Variants that name different targets make the name
+    /// ambiguous (Spec §7.3) rather than letting one win.
+    func alias(named name: String, from file: String) -> (alias: TypealiasFact, isConflicting: Bool)? {
+        let visible = (aliasVariants[name] ?? []).filter { $0.isFileScoped == false || $0.file == file }
+        guard let first = visible.first else {
+            return nil
         }
-        typealiases[alias.name] = alias
+        let isConflicting = visible.contains { other in
+            other.target != first.target || other.closure != first.closure
+                || other.compositionMembers != first.compositionMembers
+        }
+        return (first, isConflicting)
+    }
+
+    /// Drops everything extensions added, keeping the primary declarations.
+    mutating func resetToDeclarations() {
+        members = declarations.flatMap(\.members)
+        aliasVariants = [:]
+        for alias in declarations.flatMap(\.typealiases) {
+            add(alias)
+        }
+        extensionFacts = []
     }
 }

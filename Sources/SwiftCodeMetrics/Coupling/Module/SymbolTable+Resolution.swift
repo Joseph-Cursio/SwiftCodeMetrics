@@ -198,13 +198,10 @@ extension SymbolTable {
         if let only = nested.first {
             return nested.count == 1 ? .module(only) : .ambiguous
         }
-        guard let alias = entries[type]?.typealiases[name] else {
+        guard let found = entries[type]?.alias(named: name, from: context.file) else {
             return nil
         }
-        if entries[type]?.conflictingAliases.contains(name) == true {
-            return .ambiguous
-        }
-        return expand(alias, context: context, visiting: &visiting)
+        return found.isConflicting ? .ambiguous : expand(found.alias, context: context, visiting: &visiting)
     }
 
     /// Follows the remaining components of a qualified name.

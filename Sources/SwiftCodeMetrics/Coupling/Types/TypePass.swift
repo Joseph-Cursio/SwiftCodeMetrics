@@ -125,20 +125,21 @@ struct TypePass {
         var conformances: [ConformanceFact] = []
         var extensions: [ExtensionFact] = []
         for fact in entry.declarations {
+            let clause = clauseResolver(for: fact)
+            let site = DeclarationSite(owner: entry, isExtension: false, clauseResolver: clause)
             let resolver = resolver(for: fact)
-            let site = DeclarationSite(owner: entry, isExtension: false)
             declarationReferences += add(fact.declaration, at: site, resolver: resolver, index: index, into: &edges)
             conformances += self.conformances(
                 fact.declaration.inherited,
-                resolver: resolver,
+                resolver: clause,
                 isConditional: false,
                 skipsFirst: entry.kind == .class
-                    && isPossibleSuperclass(fact.declaration.inherited.first, resolver: resolver)
+                    && isPossibleSuperclass(fact.declaration.inherited.first, resolver: clause)
             )
         }
         for fact in entry.extensionFacts {
             let resolver = resolver(for: fact)
-            let site = DeclarationSite(owner: entry, isExtension: true)
+            let site = DeclarationSite(owner: entry, isExtension: true, clauseResolver: resolver)
             declarationReferences += add(fact.declaration, at: site, resolver: resolver, index: index, into: &edges)
             // `extension IntBox: P` where `IntBox = Box<Int>` is constrained too.
             let isBoundAlias = table.reachesBoundGeneric(fact.extended, from: resolver.context)
@@ -174,7 +175,7 @@ struct TypePass {
     /// could be a superclass the module does not declare (Spec §9.1).
     private func superclassFacts(of key: TypeKey, entry: TypeEntry) -> (TypeKey?, String?) {
         let primaryInherited = entry.declarations.first?.declaration.inherited.first
-        let primaryResolver = entry.declarations.first.map(resolver(for:))
+        let primaryResolver = entry.declarations.first.map(clauseResolver(for:))
         let isPossible = entry.kind == .class
             && primaryResolver.map { isPossibleSuperclass(primaryInherited, resolver: $0) } == true
         let superclass = table.superclasses(of: key).first
@@ -193,12 +194,14 @@ struct TypePass {
         var entryKinds: [Int: EdgeKind] = [:]
         var references: [TypeReference] = []
         for name in declaration.typeNames {
-            guard let reference = resolver.typeReference(for: name) else {
+            // Inheritance-clause names resolve outside the type's body.
+            let nameResolver = name.inheritanceEntry == nil ? resolver : site.clauseResolver
+            guard let reference = nameResolver.typeReference(for: name) else {
                 // `struct Client: Services` where `Services = Fetching & Caching`;
                 // elsewhere, `let deps: Services` names each member with its own kind.
                 let members = name.edgeKind == .inheritance
-                    ? compositionMembers(of: name, resolver: resolver, owner: owner)
-                    : resolver.expandedReferences(for: name)
+                    ? compositionMembers(of: name, resolver: nameResolver, owner: owner)
+                    : nameResolver.expandedReferences(for: name)
                 for member in members {
                     edges.add(
                         member,

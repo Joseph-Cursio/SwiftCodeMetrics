@@ -194,6 +194,8 @@ struct CohesionBuilder {
         for (index, node) in nodes.enumerated() {
             byName[node.baseName, default: []].append(index)
         }
+        // Own computed properties, excluded ones (`description`) included.
+        let computed = Set(groups.filter { $0.role == .computedProperty && $0.isTypeLevel == false }.map(\.baseName))
         for (caller, reference) in references.enumerated() {
             for call in reference.calls {
                 let named = byName[call.name] ?? []
@@ -210,7 +212,8 @@ struct CohesionBuilder {
                 // A computed property read joins the property, not methods named like it.
                 let named = byName[name] ?? []
                 let properties = named.filter { nodes[$0].role == .computedProperty }
-                for target in properties.isEmpty ? named : properties {
+                let fallback = computed.contains(name) ? [] : named
+                for target in properties.isEmpty ? fallback : properties {
                     components.union(caller, target)
                 }
             }

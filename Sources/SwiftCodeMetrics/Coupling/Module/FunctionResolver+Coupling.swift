@@ -166,13 +166,15 @@ extension FunctionResolver {
             reference.target = key
             reference.resolution = .exact
 
-        case .platform:
+        case .platform(let name):
             reference.bucket = .platform
             reference.resolution = .exact
+            reference.resolvedName = name
 
-        case .external:
+        case .external(let name):
             reference.bucket = .external
             reference.resolution = .approximate
+            reference.resolvedName = name
 
         case .ambiguous:
             reference.resolution = .ambiguous

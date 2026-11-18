@@ -73,7 +73,9 @@ final class SymbolTable {
 
     /// The visible global named `name`, if any.
     func global(_ name: String, from file: String) -> GlobalFact? {
-        globals[name]?.first { $0.isFileScoped == false || $0.file == file }
+        // `let` in one `#if` clause and `var` in another is mutable (Spec §2.6).
+        let visible = (globals[name] ?? []).filter { $0.isFileScoped == false || $0.file == file }
+        return visible.first(where: \.isStoredVar) ?? visible.first
     }
 
     /// The in-module superclass chain of a class, nearest first (Spec §7.3).
@@ -198,7 +200,7 @@ final class SymbolTable {
                 entry.inherited = fact.inherited
             }
             for alias in fact.typealiases {
-                entry.typealiases[alias.name] = alias
+                entry.add(alias)
             }
             entries[key] = entry
             return
@@ -214,7 +216,7 @@ final class SymbolTable {
         entry.enclosingTypePath = fact.enclosingTypePath
         entry.enclosingLocalOwner = fact.enclosingLocalOwner
         for alias in fact.typealiases {
-            entry.typealiases[alias.name] = alias
+            entry.add(alias)
         }
         entries[key] = entry
         if let owner = fact.localTo {
@@ -259,7 +261,7 @@ final class SymbolTable {
                 }
                 entries[key]?.members += fact.members
                 for alias in fact.typealiases {
-                    entries[key]?.typealiases[alias.name] = alias
+                    entries[key]?.add(alias)
                 }
                 pathMemo = [:]
                 progress = true
@@ -294,7 +296,7 @@ final class SymbolTable {
             }
             entries[key]?.members += fact.members
             for alias in fact.typealiases {
-                entries[key]?.typealiases[alias.name] = alias
+                entries[key]?.add(alias)
             }
         }
         pathMemo = [:]

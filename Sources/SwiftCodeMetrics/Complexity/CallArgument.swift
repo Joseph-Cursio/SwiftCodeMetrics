@@ -16,12 +16,12 @@ enum CallArgument: Equatable {
 
     /// The arguments of `call`, in order.
     static func arguments(of call: FunctionCallExprSyntax) -> [Self] {
-        var arguments = call.arguments.map { Self.labeled($0.label?.text ?? "_") }
+        var arguments = call.arguments.map { Self.labeled($0.label.map(SyntaxFacts.name) ?? "_") }
         if call.trailingClosure != nil {
             arguments.append(.trailingClosure)
         }
         for closure in call.additionalTrailingClosures {
-            arguments.append(.labeled(closure.label.text))
+            arguments.append(.labeled(SyntaxFacts.name(closure.label)))
         }
         return arguments
     }

@@ -23,7 +23,7 @@ struct CallableParameter: Equatable {
     static func parameters(of clause: FunctionParameterClauseSyntax) -> [Self] {
         clause.parameters.map { parameter in
             Self(
-                label: parameter.firstName.text,
+                label: SyntaxFacts.name(parameter.firstName),
                 hasDefault: parameter.defaultValue != nil,
                 isVariadic: parameter.ellipsis != nil,
                 isFunctionType: isFunctionType(parameter.type)

@@ -23,47 +23,47 @@ final class ShadowedNames: OwnBodyVisitor {
     }
 
     override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
-        names.insert(node.identifier.text)
+        names.insert(SyntaxFacts.name(node.identifier))
         return .visitChildren
     }
 
     override func visit(_ node: ClosureShorthandParameterSyntax) -> SyntaxVisitorContinueKind {
-        names.insert(node.name.text)
+        names.insert(SyntaxFacts.name(node.name))
         return .visitChildren
     }
 
     override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
-        names.insert((node.secondName ?? node.firstName).text)
+        names.insert(SyntaxFacts.name(node.secondName ?? node.firstName))
         return .visitChildren
     }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
-        names.insert(node.name.text)
+        names.insert(SyntaxFacts.name(node.name))
         return .skipChildren
     }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        names.insert(node.name.text)
+        names.insert(SyntaxFacts.name(node.name))
         return .skipChildren
     }
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
-        names.insert(node.name.text)
+        names.insert(SyntaxFacts.name(node.name))
         return .skipChildren
     }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-        names.insert(node.name.text)
+        names.insert(SyntaxFacts.name(node.name))
         return .skipChildren
     }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
-        names.insert(node.name.text)
+        names.insert(SyntaxFacts.name(node.name))
         return .skipChildren
     }
 
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
-        names.insert(node.name.text)
+        names.insert(SyntaxFacts.name(node.name))
         return .skipChildren
     }
 

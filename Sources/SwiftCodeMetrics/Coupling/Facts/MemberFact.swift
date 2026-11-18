@@ -19,4 +19,17 @@ struct MemberFact: Codable, Hashable {
     var isSingletonCandidate: Bool
     /// A method's argument labels, `_` for none; empty for other members.
     var labels: [String] = []
+
+    /// The first property among same-named members, standing for every
+    /// `#if` variant: a stored `var` (or singleton) in any configuration
+    /// makes it one (Spec §2.6), whatever the clause order.
+    static func firstProperty(_ members: [Self]) -> Self? {
+        let properties = members.filter(\.kind.isProperty)
+        guard var first = properties.first else {
+            return nil
+        }
+        first.isStoredVar = properties.contains(where: \.isStoredVar)
+        first.isSingletonCandidate = properties.contains(where: \.isSingletonCandidate)
+        return first
+    }
 }

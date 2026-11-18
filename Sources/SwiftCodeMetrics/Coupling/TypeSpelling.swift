@@ -20,13 +20,20 @@ enum TypeSpelling {
             return spelled(attributed.baseType)
         }
         if let identifier = type.as(IdentifierTypeSyntax.self) {
+            // A placeholder (`[String: _]`, SE-0315) names no type.
+            guard identifier.name.tokenKind != .wildcard else {
+                return nil
+            }
             return SpelledType(
-                components: [identifier.name.text],
+                components: [SyntaxFacts.name(identifier.name)],
                 moduleSelector: identifier.moduleSelector?.moduleName.text
             )
         }
         if let member = type.as(MemberTypeSyntax.self), let base = spelled(member.baseType) {
-            return SpelledType(components: base.components + [member.name.text], moduleSelector: base.moduleSelector)
+            return SpelledType(
+                components: base.components + [SyntaxFacts.name(member.name)],
+                moduleSelector: base.moduleSelector
+            )
         }
         if type.is(ArrayTypeSyntax.self) {
             return SpelledType(components: ["Array"], moduleSelector: nil)
@@ -84,6 +91,6 @@ enum TypeSpelling {
 
     /// The names a generic parameter clause declares.
     static func names(of clause: GenericParameterClauseSyntax?) -> [String] {
-        clause?.parameters.map(\.name.text) ?? []
+        clause?.parameters.map { SyntaxFacts.name($0.name) } ?? []
     }
 }

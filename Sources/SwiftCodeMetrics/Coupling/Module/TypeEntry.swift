@@ -21,10 +21,22 @@ struct TypeEntry {
     var nested: [String: [TypeKey]] = [:]
     /// Member typealiases by name, merged extensions included.
     var typealiases: [String: TypealiasFact] = [:]
+    /// Member typealiases whose `#if` variants name different targets.
+    var conflictingAliases: Set<String> = []
     /// A file that declares it, for resolving its inherited types.
     var file: String
     /// For a local type: the type path around its owning function.
     var enclosingTypePath: [String] = []
     /// For a local type: that path's own local owner, if it is local too.
     var enclosingLocalOwner: MemberKey?
+
+    /// Adds a member typealias. `#if` variants that name different targets
+    /// make the name ambiguous (Spec §7.3) rather than letting one win.
+    mutating func add(_ alias: TypealiasFact) {
+        if let existing = typealiases[alias.name],
+           existing.target != alias.target || existing.closure != alias.closure {
+            conflictingAliases.insert(alias.name)
+        }
+        typealiases[alias.name] = alias
+    }
 }

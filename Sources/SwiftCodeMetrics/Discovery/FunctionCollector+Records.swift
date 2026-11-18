@@ -99,7 +99,11 @@ extension FunctionCollector {
             kind: .topLevelCode,
             recursion: nil,
             hint: nil,
-            hasSyntaxErrors: code.contains(where: \.hasError)
+            // Any broken item inside the record's range counts (Spec §2.8),
+            // declarations between the statements included.
+            hasSyntaxErrors: file.statements.contains { item in
+                item.hasError && item.endPosition > first.position && item.position < last.endPosition
+            }
         ))
         let raw = rawReferences(head: .empty, body: statements.map(Syntax.init))
         let key = numbered(makeKey(declaration: "<top-level code>", isFileScoped: true))

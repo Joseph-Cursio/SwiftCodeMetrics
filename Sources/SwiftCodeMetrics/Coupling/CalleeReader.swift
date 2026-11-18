@@ -154,7 +154,7 @@ enum CalleeReader {
             let name = SyntaxFacts.name(reference.baseName)
             // `Swift::max(...)` is the same call as `Swift.max(...)`, with no lookup.
             if let module = reference.moduleSelector?.moduleName.text {
-                let shape = CalleeShape.qualified(base: [module], rootLookup: [])
+                let shape = CalleeShape.qualified(base: [FunctionResolver.selectorMarker + module], rootLookup: [])
                 return (RawCall(shape: shape, name: name, labels: labels, offset: offset), reference)
             }
             let lookup = NameLookup.lookup(reference.baseName, from: reference)

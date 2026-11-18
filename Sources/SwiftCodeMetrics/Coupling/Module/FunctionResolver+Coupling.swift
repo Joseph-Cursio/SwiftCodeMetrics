@@ -24,7 +24,7 @@ extension FunctionResolver {
             countName(name, into: &tally)
         }
         for call in raw.calls {
-            if case .qualified(let base, _) = call.shape, base == [table.module],
+            if case .qualified(let base, _) = call.shape, isThisModule(base),
                let global = table.global(call.name, from: context.file) {
                 tally.addGlobal(global)
             }
@@ -97,7 +97,8 @@ extension FunctionResolver {
                 // `Foundation.NSLog(...)`: a qualified free function, not a type.
                 if name.isCandidate, resolution.isPlatformType == false, resolution.isModuleType == false,
                    isPlatformFreeFunction(name.type.spelling)
-                    || table.isFreeFunction(name.type.spelling, from: context.file) {
+                    || table.isFreeFunction(name.type.spelling, from: context.file)
+                    || isThisModuleGlobal(name.type) {
                     return nil
                 }
             }
@@ -203,7 +204,7 @@ extension FunctionResolver {
             countResolvedRead(read, into: &tally)
             return
         }
-        if root == table.module, read.base.count == 1 {
+        if read.base.count == 1, isThisModule(read.base) {
             if let global = table.global(read.member, from: context.file) {
                 tally.addGlobal(global)
             }
@@ -245,15 +246,28 @@ extension FunctionResolver {
 
     /// A static of a module type, or of its superclass chain.
     private func countStatic(_ name: String, on key: TypeKey, into tally: inout CouplingTally) {
-        let matches = members(named: name, of: key)
-        guard let match = matches.first(where: { $0.member.isTypeLevel && $0.member.kind.isProperty }) else {
+        let matches = members(named: name, of: key).filter(\.member.isTypeLevel)
+        guard let owner = matches.first(where: \.member.kind.isProperty)?.owner,
+              let member = MemberFact.firstProperty(matches.filter { $0.owner == owner }.map(\.member)) else {
             return
         }
-        tally.addStatic(owner: match.owner, member: match.member, kind: table.entries[match.owner]?.kind)
+        tally.addStatic(owner: owner, member: member, kind: table.entries[owner]?.kind)
+    }
+
+    /// Whether `base` is `[ThisModule]` or `[::ThisModule]`: this module, not
+    /// a module type named like it.
+    func isThisModule(_ base: [String]) -> Bool {
+        base == [Self.selectorMarker + table.module] || (base == [table.module] && isModuleQualifier(table.module))
+    }
+
+    /// `ThisModule.global` read as a type name: a global, not a type (Spec §7.3).
+    private func isThisModuleGlobal(_ type: SpelledType) -> Bool {
+        type.moduleSelector == table.module && type.components.count == 1
+            && table.global(type.spelling, from: context.file) != nil
     }
 
     /// Whether `qualifier` names a module, not a module type of the same name.
-    private func isModuleQualifier(_ qualifier: String?) -> Bool {
+    func isModuleQualifier(_ qualifier: String?) -> Bool {
         guard let qualifier, context.knownModules.contains(qualifier) else {
             return false
         }

@@ -112,29 +112,7 @@ final class SymbolTable {
         return resolved
     }
 
-    /// The extension group a written path names from `file`: the key its
-    /// extension registers under, so a file-private `typealias Num = Double`
-    /// in one file and `= Int` in another name different groups, and
-    /// `extension Swift.Result` next to a private `Result` keeps its own.
-    func groupKey(for path: [String], from file: String) -> TypeKey? {
-        extensionGroups[groupPath(for: path, from: file)]
-    }
-
     // MARK: - Building
-
-    /// Where a type's own declaration resolves names from.
-    private func declarationContext(of key: TypeKey) -> ResolutionContext {
-        let parents = Array(chain(from: key).dropFirst())
-        return ResolutionContext(
-            file: entries[key]?.file ?? "",
-            knownModules: [module],
-            importsXCTest: false,
-            importsFoundation: false,
-            chain: parents,
-            genericParameters: entries[key]?.genericParameters ?? [],
-            localOwners: key.localTo.map { [$0] } ?? []
-        )
-    }
 
     /// Forgets resolved paths and superclass chains after the table grows.
     private func resetMemos() {
@@ -226,11 +204,6 @@ final class SymbolTable {
         }
         settle(&merged)
         registerExtensionGroups(pendingExtensions)
-    }
-
-    /// The module type an extension extends, if the table has it yet.
-    private func target(of fact: ExtensionDeclFact) -> TypeKey? {
-        type(atPath: fact.extended.extensionPath(in: module), from: fact.file, localOwners: [])
     }
 
     /// Adds an extension's members, typealiases and facts to `key`.

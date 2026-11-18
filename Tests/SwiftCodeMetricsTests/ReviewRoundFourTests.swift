@@ -168,6 +168,28 @@ struct ReviewRoundFourTests {
         #expect(functions.first { $0.name == "`default`(depth:)" }?.complexity.cognitive == 2)
         #expect(functions.first { $0.name.hasPrefix("countdown") }?.complexity.cognitive == 2)
     }
+    @Test("top-level code: types in a mixed top-level #if are not scored; broken declarations in range count")
+    func topLevelCode() {
+        let mixed = complexity("""
+        #if DEBUG
+        print("debug build")
+        struct Probe {
+            var flag: Bool { if Bool.random() { return true }; return false }
+        }
+        extension Probe {
+            subscript(index: Int) -> Int { if index > 0 { return 1 }; return 0 }
+        }
+        #endif
+        """)
+        let broken = complexity("""
+        print("start")
+        struct Config { let retries: Int = }
+        print("end")
+        """)
+
+        #expect(mixed.first { $0.kind == .topLevelCode }?.complexity.swiftLintCompatible == 0)
+        #expect(broken.first { $0.kind == .topLevelCode }?.complexity.hasSyntaxErrors == true)
+    }
 
     private func complexity(_ source: String) -> [FunctionRecord] {
         let input = SourceFileInput(path: "main.swift", tree: Parser.parse(source: source))

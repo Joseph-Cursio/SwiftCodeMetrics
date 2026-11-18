@@ -26,6 +26,13 @@ final class SwiftLintVisitor: SyntaxVisitor {
         super.init(viewMode: .sourceAccurate)
     }
 
+    /// A type or extension at file scope, inside a top-level `#if` that also
+    /// holds statements, is not top-level code (Spec §2.1); a local type in a
+    /// function body folds in, as SwiftLint folds it.
+    private static func skipAtFileScope(_ node: some DeclSyntaxProtocol) -> SyntaxVisitorContinueKind {
+        SyntaxFacts.isLocal(Syntax(node)) ? .visitChildren : .skipChildren
+    }
+
     override func visit(_: UnexpectedNodesSyntax) -> SyntaxVisitorContinueKind {
         .skipChildren
     }
@@ -41,6 +48,30 @@ final class SwiftLintVisitor: SyntaxVisitor {
     /// A global's initial value is not top-level code (Spec §2.1).
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         SyntaxFacts.isGlobal(node) ? .skipChildren : .visitChildren
+    }
+
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+        Self.skipAtFileScope(node)
+    }
+
+    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+        Self.skipAtFileScope(node)
+    }
+
+    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+        Self.skipAtFileScope(node)
+    }
+
+    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
+        Self.skipAtFileScope(node)
+    }
+
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        Self.skipAtFileScope(node)
+    }
+
+    override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
+        Self.skipAtFileScope(node)
     }
 
     override func visitPost(_ node: ForStmtSyntax) {

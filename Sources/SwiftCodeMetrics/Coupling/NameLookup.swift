@@ -30,7 +30,8 @@ enum NameLookup {
     }
 
     /// Whether `name` is declared by a statement before `node` in a `#if`
-    /// clause that encloses it, within the same body.
+    /// clause that encloses it inside a body. A clause at file scope holds
+    /// globals, free functions and types, which are never locals.
     private static func declaredInEnclosingClause(_ name: String, before node: Syntax) -> Bool {
         var child = node
         while let parent = child.parent {
@@ -38,7 +39,10 @@ enum NameLookup {
                 return false
             }
             if let items = parent.as(CodeBlockItemListSyntax.self),
-               items.parent?.is(IfConfigClauseSyntax.self) == true {
+               let clause = items.parent?.as(IfConfigClauseSyntax.self) {
+                guard SyntaxFacts.isLocal(Syntax(clause)) else {
+                    return false
+                }
                 for item in items {
                     if item.position >= child.position {
                         break
@@ -57,11 +61,7 @@ enum NameLookup {
     private static func declaredNames(_ item: CodeBlockItemSyntax.Item) -> [String] {
         guard case .decl(let declaration) = item else {
             if case .stmt(let statement) = item, let guardStatement = statement.as(GuardStmtSyntax.self) {
-                return guardStatement.conditions.compactMap { condition in
-                    condition.condition.as(OptionalBindingConditionSyntax.self)
-                        .flatMap { $0.pattern.as(IdentifierPatternSyntax.self) }
-                        .map { SyntaxFacts.name($0.identifier) }
-                }
+                return guardStatement.conditions.flatMap { boundNames($0.condition) }
             }
             return []
         }
@@ -75,6 +75,25 @@ enum NameLookup {
             return [SyntaxFacts.name(named.name)]
         }
         return []
+    }
+
+    /// The names a `guard` condition binds: `let x`, `let (a, b)` and
+    /// `case let .some(x)` alike.
+    private static func boundNames(_ condition: ConditionElementSyntax.Condition) -> [String] {
+        let pattern: PatternSyntax
+        switch condition {
+        case .optionalBinding(let binding):
+            pattern = binding.pattern
+
+        case .matchingPattern(let matching):
+            pattern = matching.pattern
+
+        default:
+            return []
+        }
+        return pattern.tokens(viewMode: .sourceAccurate).compactMap { token in
+            token.parent?.is(IdentifierPatternSyntax.self) == true ? SyntaxFacts.name(token) : nil
+        }
     }
 
     /// The lexical path of a type or extension declaration: enclosing type

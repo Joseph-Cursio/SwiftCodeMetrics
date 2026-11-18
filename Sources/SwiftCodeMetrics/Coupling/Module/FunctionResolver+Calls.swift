@@ -104,6 +104,11 @@ extension FunctionResolver {
         lookup: [StoredLookupResult],
         site: (ReceiverKind, String) -> CallSite
     ) -> CallSite? {
+        // `T()` on a generic parameter is keyed like `T.init()` (Spec §7.5).
+        if CalleeReader.startsUppercase(call.name), context.genericParameters.contains(call.name),
+           lookup.first == .local {
+            return initSite(call, typeName: call.name)
+        }
         let value = resolveValue(call.name, lookup: lookup)
         switch value {
         case .notCoupling:
@@ -163,8 +168,11 @@ extension FunctionResolver {
             return site(.unknown, "?.")
         }
         let isSelector = root.hasPrefix(Self.selectorMarker)
-        if isSelector == false, context.knownModules.contains(root), base.count == 1 {
-            return moduleSite(call, module: root, site: site)
+        if base.count == 1, isSelector || isModuleQualifier(root) {
+            // A `Module::` selector always names a module; `Lib.f()` does
+            // only when no module type is named `Lib`.
+            let module = isSelector ? String(root.dropFirst(Self.selectorMarker.count)) : root
+            return moduleSite(call, module: module, site: site)
         }
         if isSelector == false, isValueRoot(root, lookup: rootLookup) {
             return site(.unknown, "?.")
@@ -172,7 +180,8 @@ extension FunctionResolver {
         let resolution = table.resolve(spelledBase(base), from: context)
         switch resolution {
         case .genericParameter:
-            return site(.unknown, "?.")
+            // `T.init()` and `T.make()` on a generic parameter, like `T()`.
+            return typeSite(call, owner: displayBase(base), base: base, site: site)
 
         case .ambiguous, .external, .opaqueAlias, .platform, .unresolved:
             // `FileManager.default.x()`: a static property, not a type, is the receiver.
@@ -192,16 +201,41 @@ extension FunctionResolver {
     /// `M.f(...)` and `M::f(...)`: `f` classified as an unqualified callee of
     /// module `M` (Spec §7.5 step 2).
     private func moduleSite(_ call: RawCall, module: String, site: (ReceiverKind, String) -> CallSite) -> CallSite? {
-        guard CalleeReader.startsUppercase(call.name), module != table.module else {
+        guard CalleeReader.startsUppercase(call.name) else {
             return bareSite(call, lookup: [], site: site)
         }
         let resolved = table.resolve(SpelledType(components: [call.name], moduleSelector: module), from: context)
+        if module == table.module {
+            return thisModuleSite(call, resolved: resolved, site: site)
+        }
         // `Foundation.NSLog(...)`: an uppercase platform free function, not a type.
         if resolved.isPlatformType == false, isPlatformFreeFunction(call.name),
            PlatformModules.harvested.contains(module) || module == PlatformModules.xcTest {
             return site(.free, "free.")
         }
         return initSite(call, typeName: typeName(resolved, spelled: call.name))
+    }
+
+    /// `Lib.X(...)` in module `Lib`: `X` at module top level, never a nested
+    /// type of the current one, by the candidate order of Spec §7.3.
+    private func thisModuleSite(
+        _ call: RawCall,
+        resolved: TypeResolution,
+        site: (ReceiverKind, String) -> CallSite
+    ) -> CallSite {
+        switch resolved {
+        case .ambiguous, .genericParameter, .module, .opaqueAlias, .platform:
+            return initSite(call, typeName: typeName(resolved, spelled: call.name))
+
+        case .external, .unresolved:
+            if table.isFreeFunction(call.name, from: context.file) || isPlatformFreeFunction(call.name) {
+                return site(.free, "free.")
+            }
+            if table.global(call.name, from: context.file) != nil {
+                return site(.implicit, "implicit.")
+            }
+            return initSite(call, typeName: typeName(resolved, spelled: call.name))
+        }
     }
 
     /// A call on a type: a static, or `Owner.Inner(...)`, which constructs the
@@ -223,6 +257,9 @@ extension FunctionResolver {
     /// Whether a dotted base's root is a value, not a type or a module: then
     /// the receiver is `?`.
     private func isValueRoot(_ root: String, lookup: [StoredLookupResult]) -> Bool {
+        if CalleeReader.startsUppercase(root), context.genericParameters.contains(root) {
+            return false
+        }
         switch resolveValue(root, lookup: lookup) {
         case .enumCase, .global, .inheritedMember, .notCoupling, .ownMember, .staticMember:
             return true

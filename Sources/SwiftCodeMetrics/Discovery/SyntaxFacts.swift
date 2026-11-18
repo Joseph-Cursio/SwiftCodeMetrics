@@ -79,6 +79,21 @@ enum SyntaxFacts {
         placement(of: variable) != .local
     }
 
+    /// Whether any attribute in a list, inside `#if` clauses too, has arguments.
+    static func hasAttributeArguments(_ list: AttributeListSyntax) -> Bool {
+        list.contains { element in
+            switch element {
+            case .attribute(let attribute):
+                return attribute.arguments != nil
+
+            case .ifConfigDecl(let block):
+                return block.clauses.contains { clause in
+                    clause.elements?.as(AttributeListSyntax.self).map(hasAttributeArguments) ?? false
+                }
+            }
+        }
+    }
+
     /// Whether a variable is declared at file scope.
     static func isGlobal(_ variable: VariableDeclSyntax) -> Bool {
         placement(of: variable) == .global

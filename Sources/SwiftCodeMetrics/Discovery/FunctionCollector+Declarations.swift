@@ -63,10 +63,18 @@ extension FunctionCollector {
                 localTo: nil,
                 module: context.module
             )
+            // Members of a `private extension` are file-private, its
+            // typealiases included.
+            let isFileScoped = SyntaxFacts.isFileScoped(node.modifiers)
+            let typealiases = facts.typealiases.map { alias in
+                var scoped = alias
+                scoped.isFileScoped = alias.isFileScoped || isFileScoped
+                return scoped
+            }
             declarations.extensions.append(ExtensionDeclFact(
                 extended: extended,
                 members: facts.members,
-                typealiases: facts.typealiases,
+                typealiases: typealiases,
                 file: context.file ?? "",
                 declaration: TypeDeclarationReader.read(
                     node,

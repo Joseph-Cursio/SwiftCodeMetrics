@@ -104,7 +104,7 @@ enum NameLookup {
         var current: Syntax? = node
         while let ancestor = current {
             if let extensionDecl = ancestor.as(ExtensionDeclSyntax.self) {
-                let extended = TypeSpelling.spelled(extensionDecl.extendedType)?.components ?? []
+                let extended = TypeSpelling.spelled(extensionDecl.extendedType)?.lexicalPath ?? []
                 components.insert(contentsOf: extended, at: 0)
             } else if let named = ancestor.asProtocol(NamedDeclSyntax.self), ancestor.isProtocol(DeclGroupSyntax.self) {
                 components.insert(SyntaxFacts.name(named.name), at: 0)

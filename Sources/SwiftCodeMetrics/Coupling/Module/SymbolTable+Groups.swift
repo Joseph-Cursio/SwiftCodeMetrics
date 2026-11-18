@@ -26,7 +26,7 @@ extension SymbolTable {
         case .ambiguous, .genericParameter, .opaqueAlias, .unresolved:
             break
         }
-        return visible(byPath[canonical] ?? [], from: file).isEmpty ? canonical : components
+        return visible(byPath[canonical] ?? [], from: file).isEmpty ? canonical : SpelledType.dotted(components)
     }
 
     /// Whether a path's root is a module type that has no nested type, or
@@ -59,5 +59,20 @@ extension SymbolTable {
             genericParameters: [],
             localOwners: []
         )
+    }
+
+    /// The module type nested in the group for the platform or external
+    /// type `name`: `Double.Scale` for `extension Double { enum Scale }`.
+    /// Never one nested in a module type that shadows the name.
+    func groupNested(_ name: String, _ component: String, file: String) -> TypeResolution? {
+        let base = name.split(separator: ".").map(String.init)
+        guard let root = base.first, visible(byPath[[root]] ?? [], from: file).isEmpty else {
+            return nil
+        }
+        let nested = visible(byPath[base + [component]] ?? [], from: file)
+        guard let only = nested.first else {
+            return nil
+        }
+        return nested.count == 1 ? .module(only) : .ambiguous
     }
 }

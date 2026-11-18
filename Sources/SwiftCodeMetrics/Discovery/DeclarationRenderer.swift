@@ -72,15 +72,35 @@ enum DeclarationRenderer {
         return prefix + specifier + " " + CanonicalText.render(binding.pattern) + type + " = <initializer>"
     }
 
-    /// The key context for a member variable's attribute arguments:
-    /// `var volume: Int <attributes>`.
-    static func attributeContext(_ variable: VariableDeclSyntax) -> String {
-        let bindings = variable.bindings.map { binding in
-            let type = binding.typeAnnotation.map { ": " + CanonicalText.render($0.type) } ?? ""
-            return CanonicalText.render(binding.pattern) + type
+    /// The key context of a declaration's attribute arguments: `var volume:
+    /// Int <attributes>` for a member variable or global, `<attributes>` for a
+    /// type or extension, whose own scope is already open. Nil for other
+    /// declarations and for an attribute list nested in a `#if` clause, which
+    /// the outermost list's context already covers.
+    static func attributeContext(of list: AttributeListSyntax) -> (declaration: String, isFileScoped: Bool)? {
+        if let variable = list.parent?.as(VariableDeclSyntax.self), SyntaxFacts.isMemberOrGlobal(variable) {
+            let bindings = variable.bindings.map { binding in
+                let type = binding.typeAnnotation.map { ": " + CanonicalText.render($0.type) } ?? ""
+                return CanonicalText.render(binding.pattern) + type
+            }
+            let declaration = typeLevelPrefix(variable.modifiers) + variable.bindingSpecifier.text + " "
+                + bindings.joined(separator: ", ") + " <attributes>"
+            return (declaration, SyntaxFacts.isFileScoped(variable.modifiers))
         }
-        return typeLevelPrefix(variable.modifiers) + variable.bindingSpecifier.text + " "
-            + bindings.joined(separator: ", ") + " <attributes>"
+        if list.parent?.asProtocol(DeclGroupSyntax.self) != nil {
+            return ("<attributes>", false)
+        }
+        return nil
+    }
+
+    /// `case circle <default>`: the key context of an enum case's
+    /// associated-value default, or nil for any other initializer.
+    static func caseDefaultContext(_ initializer: InitializerClauseSyntax) -> String? {
+        guard initializer.parent?.is(EnumCaseParameterSyntax.self) == true,
+              let element = initializer.ancestorOrSelf(mapping: { $0.as(EnumCaseElementSyntax.self) }) else {
+            return nil
+        }
+        return "case " + element.name.text + " <default>"
     }
 
     /// `<owner> { <accessor> }`, for example `var count: Int { get }`.

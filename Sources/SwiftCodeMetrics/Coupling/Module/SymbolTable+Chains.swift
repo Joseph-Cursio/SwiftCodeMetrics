@@ -20,10 +20,14 @@ extension SymbolTable {
         }
         var chain = [key]
         var path = key.path
+        // From the declaring file: `extension Box { struct Inner }` through a
+        // private alias of a private Outer keys Inner module-wide, yet it is
+        // still nested in Outer.
+        let file = entries[key]?.file ?? key.file ?? ""
         while path.count > 1 {
             path.removeLast()
             let localParent = key.localTo.flatMap { locals[$0]?[path] }
-            let parent = localParent ?? visible(byPath[path] ?? [], from: key.file ?? "").first ?? extensionGroups[path]
+            let parent = localParent ?? visible(byPath[path] ?? [], from: file).first ?? extensionGroups[path]
             if let parent {
                 chain.append(parent)
             }

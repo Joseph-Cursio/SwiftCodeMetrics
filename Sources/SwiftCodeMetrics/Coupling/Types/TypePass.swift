@@ -152,11 +152,7 @@ struct TypePass {
             conformances += own
             extensions.append(extensionFact(fact, conformances: own))
         }
-        for record in owned {
-            for reference in functions[record].typeReferences {
-                edges.add(reference, kind: reference.edgeKind, isWeakOrUnowned: false, familyOf: index.familyRoot(of:))
-            }
-        }
+        addRecordReferences(owned, groups: groups, index: index, into: &edges)
         let (superclass, possibleSuperclass) = superclassFacts(of: key, entry: entry)
         return TypeDraft(
             key: key,
@@ -272,7 +268,7 @@ struct TypePass {
 
     /// Whether a type conforms to SwiftUI's `View`, directly or through module protocols.
     private func conformsToView(_ draft: TypeDraft, drafts: [TypeKey: TypeDraft]) -> Bool {
-        let viewNames: Set<String> = ["SwiftUI.View", "View"]
+        let viewNames: Set<String> = ["SwiftUI.View", "SwiftUI::View", "View"]
         let refined = refinedProtocols(of: draft.conformanceTargets, drafts: drafts).compactMap { drafts[$0] }
         let protocols = [draft] + refined
         return protocols.contains { candidate in

@@ -8,6 +8,7 @@
 //
 
 import SwiftCodeMetrics
+import SwiftParser
 import Testing
 
 @Suite("v0.2 review regressions, round 4")
@@ -64,6 +65,30 @@ struct ReviewRoundFourTests {
         let type = record?.typeReferences.first { $0.spelling == "Type" }
         #expect(type?.bucket == .module)
         #expect(type?.target?.path == ["Token", "Type"])
+    }
+    @Test("recursion through backticked names and labels (Spec §3.4)")
+    func backtickedRecursion() {
+        let functions = complexity("""
+        enum Theme {
+            case light, dark
+            static func `default`(depth: Int) -> Theme {
+                depth > 0 ? Self.default(depth: depth - 1) : .light
+            }
+        }
+        struct Walker {
+            func countdown(`in` count: Int) -> Int {
+                count == 0 ? 0 : countdown(in: count - 1)
+            }
+        }
+        """)
+
+        #expect(functions.first { $0.name == "`default`(depth:)" }?.complexity.cognitive == 2)
+        #expect(functions.first { $0.name.hasPrefix("countdown") }?.complexity.cognitive == 2)
+    }
+
+    private func complexity(_ source: String) -> [FunctionRecord] {
+        let input = SourceFileInput(path: "main.swift", tree: Parser.parse(source: source))
+        return SwiftCodeMetrics.functionMetrics(of: input, module: "Lib").functions
     }
 
     private func record(_ name: String, _ source: String) -> FunctionRecord? {

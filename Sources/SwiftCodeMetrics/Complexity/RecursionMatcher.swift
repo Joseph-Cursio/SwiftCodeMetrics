@@ -34,10 +34,10 @@ struct RecursionMatcher {
         for parameter in clause.parameters {
             let internalName = parameter.secondName ?? parameter.firstName
             if internalName.tokenKind != .wildcard {
-                declared.insert(internalName.text)
+                declared.insert(SyntaxFacts.name(internalName))
             }
         }
-        self.baseName = function.name.text
+        self.baseName = SyntaxFacts.name(function.name)
         self.isTypeLevel = SyntaxFacts.isTypeLevel(function.modifiers)
         self.parameters = CallableParameter.parameters(of: clause)
         self.shadowed = declared
@@ -47,13 +47,13 @@ struct RecursionMatcher {
     func classify(_ call: FunctionCallExprSyntax) -> RecursionMatch? {
         let arguments = CallArgument.arguments(of: call)
         if let reference = call.calledExpression.as(DeclReferenceExprSyntax.self) {
-            guard reference.baseName.text == baseName, shadowed.contains(baseName) == false else {
+            guard SyntaxFacts.name(reference.baseName) == baseName, shadowed.contains(baseName) == false else {
                 return nil
             }
             return fits(arguments) ? .direct(reference.baseName) : nil
         }
         guard let access = call.calledExpression.as(MemberAccessExprSyntax.self),
-              access.declName.baseName.text == baseName else {
+              SyntaxFacts.name(access.declName.baseName) == baseName else {
             return nil
         }
         let anchor = access.declName.baseName

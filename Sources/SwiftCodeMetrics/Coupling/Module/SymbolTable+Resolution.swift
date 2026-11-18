@@ -26,6 +26,15 @@ extension SymbolTable {
         if let selector = spelled.moduleSelector {
             return resolveQualified(module: selector, rest: components, context: context, visiting: &visiting)
         }
+        // An extension path's leading `Swift::` is a selector.
+        if let selector = SpelledType.selector(of: components) {
+            return resolveQualified(
+                module: selector,
+                rest: Array(components.dropFirst()),
+                context: context,
+                visiting: &visiting
+            )
+        }
         if let qualified = resolveDotted(components, context: context, visiting: &visiting) {
             return qualified
         }
@@ -52,14 +61,19 @@ extension SymbolTable {
             )
         }
         guard let first = resolveRoot(root, context: context, visiting: &visiting) else {
-            // A type nested in an extension of a platform or external type keeps
-            // its written path: `String.Limits`.
-            if components.count > 1, let exact = visible(byPath[components] ?? [], from: context.file).first {
-                return .module(exact)
-            }
-            return fallback(components, context: context)
+            return resolveUndeclared(components, context: context)
         }
         return descend(from: first, through: components.dropFirst(), context: context, visiting: &visiting)
+    }
+
+    /// A name whose root the module does not declare.
+    private func resolveUndeclared(_ components: [String], context: ResolutionContext) -> TypeResolution {
+        // A type nested in an extension of a platform or external type keeps
+        // its written path: `String.Limits`.
+        if components.count > 1, let exact = visible(byPath[components] ?? [], from: context.file).first {
+            return .module(exact)
+        }
+        return fallback(components, context: context)
     }
 
     /// `Module.Name` written with a dot, when the root is a known module
@@ -292,6 +306,16 @@ extension SymbolTable {
         let isPlatformName = isPlatform && isPlatformType(dotted, rest.first, context: context)
         guard let root = rest.first else {
             return .unresolved
+        }
+        // `Swift::Result.Box` reaches a type nested in a group kept on its
+        // written path, `extension Swift.Result` beside the module's own
+        // Result; never a type nested in a module type named `Swift`.
+        let file = context.file
+        if visible(byPath[[qualifier]] ?? [], from: file).isEmpty {
+            let exact = visible(byPath[[qualifier] + rest] ?? [], from: file)
+            if let only = exact.first {
+                return exact.count == 1 ? .module(only) : .ambiguous
+            }
         }
         // `Swift.String.Limits` reaches the module's type nested in the String group.
         let start: TypeResolution = isPlatformName ? .platform(root) : .external(root)

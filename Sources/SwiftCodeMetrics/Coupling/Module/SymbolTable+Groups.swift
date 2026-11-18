@@ -26,7 +26,7 @@ extension SymbolTable {
         case .ambiguous, .genericParameter, .opaqueAlias, .unresolved:
             break
         }
-        return visible(byPath[canonical] ?? [], from: file).isEmpty ? canonical : components
+        return visible(byPath[canonical] ?? [], from: file).isEmpty ? canonical : SpelledType.dotted(components)
     }
 
     /// Whether a path's root is a module type that has no nested type, or

@@ -47,6 +47,15 @@ enum TypeSpelling {
         return nil
     }
 
+    /// The named types an inheritance entry spells: one, or each member of
+    /// a composition (`class Card: Base & Themed` names Base, then Themed).
+    static func spelledMembers(_ type: TypeSyntax) -> [SpelledType] {
+        if let composition = type.as(CompositionTypeSyntax.self) {
+            return composition.elements.flatMap { spelledMembers($0.type) }
+        }
+        return spelled(type).map { [$0] } ?? []
+    }
+
     /// Whether a parameter type is a closure, before typealias expansion.
     static func closureShape(_ type: TypeSyntax) -> ClosureShape {
         var current = type

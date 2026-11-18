@@ -27,7 +27,7 @@ extension FunctionCollector {
             module: context.module
         )
         let isFileScoped = SyntaxFacts.isFileScoped(node.modifiers) || lexical.isFileScoped
-        let inherited = node.inheritanceClause?.inheritedTypes.compactMap { TypeSpelling.spelled($0.type) } ?? []
+        let inherited = node.inheritanceClause?.inheritedTypes.flatMap { TypeSpelling.spelledMembers($0.type) } ?? []
         declarations.types.append(TypeFact(
             path: path,
             extensionPathLength: lexical.extensionPathLength,

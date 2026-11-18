@@ -111,4 +111,43 @@ struct TypeReviewRoundThreeTests {
         #expect(Modules.type("Int", in: analysis)?.sizes.nom == 1)
         #expect(Modules.type("Int", in: analysis)?.wmc.cognitive == 1)
     }
+
+    @Test("a direct composition names the superclass; a superclass declared later in an extension is found")
+    func superclasses() throws {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            protocol Themed {}
+            class Base { var tint = 0 }
+            final class Card: Base & Themed {
+                func describe() -> Int { tint }
+            }
+            extension Child.Mode {
+                struct Label { var text = "" }
+            }
+            extension Outer {
+                class Parent {
+                    enum Mode { case on, off }
+                    var count = 0
+                    func reset() {}
+                }
+            }
+            struct Outer {}
+            final class Child: Outer.Parent {
+                func run() { reset() }
+            }
+            """)
+        ])
+        let card = try #require(Modules.type("Card", in: analysis))
+        let child = try #require(Modules.type("Child", in: analysis))
+
+        #expect(card.superclass?.path == ["Base"])
+        #expect(card.possibleSuperclass == nil)
+        #expect(card.conformances.map(\.name) == ["Themed"])
+        #expect(card.cohesion.attributeCount == 1)
+        #expect(child.superclass?.path == ["Outer", "Parent"])
+        #expect(child.possibleSuperclass == nil)
+        #expect(analysis.unresolvedExtensions.isEmpty)
+        #expect(Modules.type("Outer.Parent.Mode.Label", in: analysis) != nil)
+        #expect(Modules.keys(Modules.record("run()", in: analysis), .self) == ["self.reset()"])
+    }
 }

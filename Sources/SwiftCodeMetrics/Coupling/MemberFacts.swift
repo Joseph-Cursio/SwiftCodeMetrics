@@ -90,8 +90,10 @@ struct MemberFacts {
         return []
     }
 
-    /// Whether `value` is `T(...)`, `T.init(...)`, `Self(...)` or `.init(...)` (Spec §8.2).
-    private static func initializesOwnType(_ value: ExprSyntax?, typePath: [String]) -> Bool {
+    /// Whether `value` is `T(...)`, `T.init(...)`, `Self(...)` or `.init(...)`
+    /// (Spec §8.2). A baseless `.init(...)` builds the annotated type, so it
+    /// counts only with no annotation or one naming `T` or `Self`.
+    private static func initializesOwnType(_ value: ExprSyntax?, annotation: TypeSyntax?, typePath: [String]) -> Bool {
         guard let call = value?.as(FunctionCallExprSyntax.self) else {
             return false
         }
@@ -99,7 +101,7 @@ struct MemberFacts {
         if let access = callee.as(MemberAccessExprSyntax.self),
            access.declName.baseName.tokenKind == .keyword(.`init`) {
             guard let base = access.base else {
-                return true
+                return annotation.map { namesOwnType($0, typePath: typePath) } ?? true
             }
             callee = base
         }
@@ -112,6 +114,14 @@ struct MemberFacts {
         }
         // The path is prefixed with the module, so `Lib.Manager()` matches too.
         return names.count <= typePath.count && Array(typePath.suffix(names.count)) == names
+    }
+
+    /// Whether a type annotation names `Self` or `T` by a suffix of its path.
+    private static func namesOwnType(_ annotation: TypeSyntax, typePath: [String]) -> Bool {
+        guard let names = TypeSpelling.spelled(annotation)?.components else {
+            return false
+        }
+        return names == ["Self"] || (names.count <= typePath.count && Array(typePath.suffix(names.count)) == names)
     }
 
     /// Reads one member list, descending into `#if` clauses.
@@ -179,7 +189,11 @@ struct MemberFacts {
         for binding in variable.bindings {
             let isStored = Self.isStored(binding)
             let isSingleton = isTypeLevel && isStored
-                && Self.initializesOwnType(binding.initializer?.value, typePath: [module] + typePath)
+                && Self.initializesOwnType(
+                    binding.initializer?.value,
+                    annotation: binding.typeAnnotation?.type,
+                    typePath: [module] + typePath
+                )
             for name in Self.names(in: binding.pattern) {
                 members.append(MemberFact(
                     name: name,

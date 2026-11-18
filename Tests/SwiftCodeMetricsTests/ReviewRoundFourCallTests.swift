@@ -79,6 +79,39 @@ struct ReviewRoundFourCallTests {
         #expect(Modules.keys(build, .type) == ["T.init()", "T.make()"])
         #expect(Modules.headline(Modules.record("fresh()", in: analysis)) == ["Element.init()"])
     }
+    @Test("singletons: .init() under another type's annotation is not one; let/var #if variants are mutable")
+    func staticVariants() {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            import Foundation
+            final class AppEnvironment {
+                static let decoder: JSONDecoder = .init()
+                static let shared: AppEnvironment = .init()
+                #if DEBUG
+                static let level = 1
+                #else
+                static var level = 2
+                #endif
+            }
+            #if DEBUG
+            let apiBase = "debug"
+            #else
+            nonisolated(unsafe) var apiBase = "release"
+            #endif
+            func use() -> String {
+                _ = AppEnvironment.decoder
+                _ = AppEnvironment.shared
+                _ = AppEnvironment.level
+                return apiBase
+            }
+            """)
+        ])
+
+        let coupling = Modules.record("use()", in: analysis)?.commonCoupling
+        #expect(coupling?.singletons == ["AppEnvironment.shared"])
+        #expect(coupling?.mutableStatics == ["AppEnvironment.level"])
+        #expect(coupling?.mutableGlobals == ["apiBase"])
+    }
 
     private func record(_ name: String, _ source: String) -> FunctionRecord? {
         Modules.record(name, in: Modules.analysis("Lib", [("A.swift", source)]))

@@ -246,11 +246,12 @@ extension FunctionResolver {
 
     /// A static of a module type, or of its superclass chain.
     private func countStatic(_ name: String, on key: TypeKey, into tally: inout CouplingTally) {
-        let matches = members(named: name, of: key)
-        guard let match = matches.first(where: { $0.member.isTypeLevel && $0.member.kind.isProperty }) else {
+        let matches = members(named: name, of: key).filter(\.member.isTypeLevel)
+        guard let owner = matches.first(where: \.member.kind.isProperty)?.owner,
+              let member = MemberFact.firstProperty(matches.filter { $0.owner == owner }.map(\.member)) else {
             return
         }
-        tally.addStatic(owner: match.owner, member: match.member, kind: table.entries[match.owner]?.kind)
+        tally.addStatic(owner: owner, member: member, kind: table.entries[owner]?.kind)
     }
 
     /// Whether `base` is `[ThisModule]` or `[::ThisModule]`: this module, not

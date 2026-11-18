@@ -189,7 +189,7 @@ struct FunctionResolver {
     /// A static of an enclosing type; instance members are unreachable by bare name.
     private func enclosingStatic(_ name: String, in key: TypeKey) -> ValueResolution? {
         let statics = (table.entries[key]?.members ?? []).filter { $0.name == name && $0.isTypeLevel }
-        guard let member = statics.first(where: \.kind.isProperty) ?? statics.first else {
+        guard let member = MemberFact.firstProperty(statics) ?? statics.first else {
             return nil
         }
         return member.kind == .enumCase ? .enumCase(key) : .staticMember(key, member)
@@ -199,7 +199,7 @@ struct FunctionResolver {
     private func pick(_ matches: [MemberFact], owner: TypeKey, isInherited: Bool) -> ValueResolution {
         let statics = matches.filter { $0.isTypeLevel && $0.kind != .enumCase }
         let instances = matches.filter { $0.isTypeLevel == false }
-        if let member = statics.first(where: \.kind.isProperty) ?? statics.first,
+        if let member = MemberFact.firstProperty(statics) ?? statics.first,
            instances.isEmpty || raw.context.isTypeLevel {
             return .staticMember(owner, member)
         }

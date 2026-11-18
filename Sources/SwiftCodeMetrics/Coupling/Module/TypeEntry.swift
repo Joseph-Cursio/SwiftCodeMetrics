@@ -29,6 +29,10 @@ struct TypeEntry {
     var enclosingTypePath: [String] = []
     /// For a local type: that path's own local owner, if it is local too.
     var enclosingLocalOwner: MemberKey?
+    /// The primary declarations, one per `#if` variant; none for a group.
+    var declarations: [TypeFact] = []
+    /// The extensions merged into it.
+    var extensionFacts: [ExtensionDeclFact] = []
 
     /// Adds a member typealias. `#if` variants that name different targets
     /// make the name ambiguous (Spec §7.3) rather than letting one win.

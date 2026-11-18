@@ -46,7 +46,7 @@ struct ModulePassTests {
             "DispatchQueue.init(label:)", "XCTAssertEqual.init(_:_:)", "free.NSLog(_:)"
         ])
         #expect(analysis.version.platformTable == "27.2")
-        #expect(analysis.version.couplingDefinition == "coupling-1")
+        #expect(analysis.version.couplingDefinition == "coupling-2")
     }
 
     @Test("functions, statics and globals the module declares win over the platform table")
@@ -116,9 +116,10 @@ struct ModulePassTests {
         print("swift-collections: \(inputs.map(\.files.count).reduce(0, +)) files in \(elapsed)")
 
         // The spec's target is for optimised code (`swift test -c release`
-        // measured 1.0 s); a debug build gets a loose bound against regressions.
+        // measured 1.1 s with the type pass); a debug build gets a loose bound
+        // against regressions, wide enough for the corpus suites running beside it.
         #if DEBUG
-        #expect(elapsed < .seconds(10))
+        #expect(elapsed < .seconds(30))
         #else
         #expect(elapsed < .seconds(2))
         #endif

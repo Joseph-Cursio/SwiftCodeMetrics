@@ -19,6 +19,14 @@ Given every file of a module, v0.2 adds each function's coupling:
 
 Names are resolved by swift-syntax's lexical lookup and a symbol table that merges every type with its extensions across files.
 
+v0.3 adds a record for every type, merged with its extensions, and the module level:
+
+- **Sizes**: members (NOM, split into instance and static), stored properties (NOA) with their facts, enum cases, conformances and protocol requirements.
+- **WMC**: the summed cognitive complexity and decision count of a type's functions; for a protocol, of its default implementations.
+- **Cohesion (LCOM4)**: the number of disconnected member groups, with the groups listed, attribute-free members set aside, and a reason whenever it is not defined.
+- **Type coupling**: Ce split into protocols, SwiftUI views, namespace enums and concrete types, Ce of the nesting family, Ca within the module, protocol conformer counts, and the type graph's edges and cycles.
+- **Module coupling** (`analyzePackage`): each module's imports within the scan, the modules importing it, re-exports, and instability.
+
 ```swift
 import SwiftCodeMetrics
 import SwiftParser
@@ -34,8 +42,14 @@ let module = SwiftCodeMetrics.analyzeModule(ModuleInput(name: "MyModule", files:
 for function in module.functions {
     print(function.key, function.fanOut?.fanOut ?? 0, function.commonCoupling?.globals ?? [])
 }
+for type in module.types {
+    print(type.key, type.sizes.nom, type.cohesion.lcom4 as Any, type.coupling.ceTotal)
+}
+
+// Module coupling needs every module of the scan.
+let package = SwiftCodeMetrics.analyzePackage([module, otherModule])
 ```
 
-The definitions, worked examples, API and milestones (v0.3 adds per-type and per-module coupling and cohesion) are in [Docs/Spec.md](Docs/Spec.md). The platform table is generated from the SDK by `swift run -c release PlatformTableGenerator`.
+The definitions, worked examples, API and milestones are in [Docs/Spec.md](Docs/Spec.md). The platform table is generated from the SDK by `swift run -c release PlatformTableGenerator`.
 
 Requires swift-syntax 603.0.2 (pinned exactly), Swift 6 language mode and macOS 14 or later.

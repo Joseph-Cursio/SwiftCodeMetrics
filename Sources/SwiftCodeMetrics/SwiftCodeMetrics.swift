@@ -123,4 +123,13 @@ public enum SwiftCodeMetrics {
     ) -> ModuleAnalysis {
         ModulePass.run(module: name, isTest: isTest, files: files, options: options, platform: platformTable)
     }
+
+    // MARK: Module level: every module of the scan
+
+    /// Pass 3 (Spec §10): module edges, and each module's Ce, Ca and
+    /// instability over the scanned modules. Needs every `ModuleAnalysis`
+    /// in the scan.
+    public static func analyzePackage(_ modules: [ModuleAnalysis]) -> PackageAnalysis {
+        PackagePass.run(modules)
+    }
 }

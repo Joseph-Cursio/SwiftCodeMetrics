@@ -21,6 +21,24 @@ enum SyntaxFacts {
         return text.hasPrefix("`") && text.hasSuffix("`") && inner.isEmpty == false ? String(inner) : text
     }
 
+    /// Every attribute in a list, those inside `#if` clauses included (Spec §2.6).
+    static func attributes(_ list: AttributeListSyntax) -> [AttributeSyntax] {
+        list.flatMap { element -> [AttributeSyntax] in
+            switch element {
+            case .attribute(let attribute):
+                return [attribute]
+
+            case .ifConfigDecl(let ifConfig):
+                return ifConfig.clauses.flatMap { clause -> [AttributeSyntax] in
+                    guard case .attributes(let nested)? = clause.elements else {
+                        return []
+                    }
+                    return attributes(nested)
+                }
+            }
+        }
+    }
+
     /// Whether the modifiers make a declaration `private` or `fileprivate`.
     /// `private(set)` restricts only the setter, so it doesn't count.
     static func isFileScoped(_ modifiers: DeclModifierListSyntax) -> Bool {

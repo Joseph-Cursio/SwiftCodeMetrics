@@ -56,6 +56,10 @@ struct MemberFacts {
         return TypealiasFact(
             name: SyntaxFacts.name(alias.name),
             target: TypeSpelling.spelled(target),
+            compositionMembers: TypeSpelling.compositionMembers(target),
+            isBoundGeneric: target.tokens(viewMode: .sourceAccurate).contains { token in
+                [.leftAngle, .leftSquare, .postfixQuestionMark].contains(token.tokenKind)
+            },
             closure: TypeSpelling.closureShape(target),
             typePath: typePath,
             file: file,
@@ -162,10 +166,18 @@ struct MemberFacts {
         if let function = decl.as(FunctionDeclSyntax.self) {
             add(SyntaxFacts.name(function.name), function.modifiers, .function)
             members[members.count - 1].labels = function.signature.parameterClause.parameters.map(\.firstName.text)
+            members[members.count - 1].declaration = DeclarationRenderer.function(function)
         } else if let initializer = decl.as(InitializerDeclSyntax.self) {
             add("init", initializer.modifiers, .initializer)
+            members[members.count - 1].labels = initializer.signature.parameterClause.parameters
+                .map { SyntaxFacts.name($0.firstName) }
+            members[members.count - 1].declaration = DeclarationRenderer.initializer(initializer)
         } else if let subscriptDecl = decl.as(SubscriptDeclSyntax.self) {
             add("subscript", subscriptDecl.modifiers, .subscriptMember)
+            // A subscript's parameter names are labels only when written twice.
+            members[members.count - 1].labels = subscriptDecl.parameterClause.parameters
+                .map { $0.secondName == nil ? "_" : SyntaxFacts.name($0.firstName) }
+            members[members.count - 1].declaration = DeclarationRenderer.subscriptDeclaration(subscriptDecl)
         }
     }
 
@@ -200,7 +212,9 @@ struct MemberFacts {
                     isTypeLevel: isTypeLevel,
                     kind: isStored ? .storedProperty : .computedProperty,
                     isStoredVar: isStored && isVar,
-                    isSingletonCandidate: isSingleton
+                    isSingletonCandidate: isSingleton,
+                    // `var tint: UIColor` and `var tint: NSColor` in two `#if` clauses stay two.
+                    declaration: isStored ? "" : DeclarationRenderer.property(binding, modifiers: variable.modifiers)
                 ))
             }
         }

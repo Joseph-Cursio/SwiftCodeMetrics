@@ -191,7 +191,12 @@ extension SymbolTable {
         for component in rest {
             switch current {
             case .module(let key):
-                current = memberType(component, of: key, context: context, visiting: &visiting) ?? .unresolved
+                // Nested types of the in-module superclass chain are reachable too (§7.3 step 3).
+                var found = memberType(component, of: key, context: context, visiting: &visiting)
+                for parent in superclasses(of: key) where found == nil {
+                    found = memberType(component, of: parent, context: context, visiting: &visiting)
+                }
+                current = found ?? .unresolved
 
             case .platform(let name):
                 current = .platform(name + "." + component)

@@ -24,4 +24,6 @@ struct RawFunctionReferences: Codable, Hashable {
     /// The parameters, for the records that carry parameter counts; empty
     /// otherwise.
     var parameters: [RawParameter]
+    /// Uses of `self` for the cohesion graph.
+    var cohesion = RawCohesionFacts()
 }

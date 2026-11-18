@@ -10,10 +10,10 @@
 public struct MetricsVersion: Sendable, Codable, Hashable {
     /// This build's versions.
     public static let current = Self(
-        library: "0.2.0",
+        library: "0.3.0",
         swiftSyntax: "603.0.2",
         complexityDefinition: "complexity-1",
-        couplingDefinition: "coupling-1",
+        couplingDefinition: "coupling-2",
         platformTable: nil,
         swiftLintReference: "0.65.1"
     )

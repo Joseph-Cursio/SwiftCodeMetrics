@@ -17,8 +17,12 @@ struct MemberFact: Codable, Hashable {
     var isStoredVar: Bool
     /// A stored static initialised by its own type: `T(...)`, `Self(...)` or `.init(...)`.
     var isSingletonCandidate: Bool
-    /// A method's argument labels, `_` for none; empty for other members.
+    /// A method's, initialiser's or subscript's argument labels, `_` for
+    /// none; empty for other members.
     var labels: [String] = []
+    /// A callable's or computed property's declaration as rendered in its key, so overloads with
+    /// the same labels stay apart while `#if` variants merge.
+    var declaration = ""
 
     /// The first property among same-named members, standing for every
     /// `#if` variant: a stored `var` (or singleton) in any configuration

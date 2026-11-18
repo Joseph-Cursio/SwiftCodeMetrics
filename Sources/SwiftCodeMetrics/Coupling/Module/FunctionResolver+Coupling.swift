@@ -82,28 +82,61 @@ extension FunctionResolver {
 
     /// The type references, resolved; generic parameters are dropped.
     func typeReferences() -> [TypeReference] {
-        raw.typeNames.compactMap { name in
-            let resolution: TypeResolution
-            if name.qualifierMustBeModule, isModuleQualifier(name.type.moduleSelector) == false {
+        raw.typeNames.compactMap(typeReference(for:))
+    }
+
+    /// One type name, resolved; nil for generic parameters and names that
+    /// turn out not to be types.
+    func typeReference(for name: RawTypeName) -> TypeReference? {
+        let resolution: TypeResolution
+        if name.qualifierMustBeModule, isModuleQualifier(name.type.moduleSelector) == false {
+            return nil
+        }
+        if name.isCandidate, name.type.moduleSelector == nil {
+            // `Self.State(...)`: only the nested type is a reference; `Self` itself is not.
+            if name.type.components == ["Self"] {
+                return nestedTarget(name).flatMap { reference($0.name, resolution: $0.resolution) }
+            }
+            guard case .type(let resolved) = classifyCandidate(name.type.spelling, lookup: name.lookup) else {
                 return nil
             }
-            if name.isCandidate, name.type.moduleSelector == nil {
-                guard case .type(let resolved) = classifyCandidate(name.type.spelling, lookup: name.lookup) else {
-                    return nil
-                }
-                resolution = resolved
-            } else {
-                resolution = table.resolve(name.type, from: context)
-                // `Foundation.NSLog(...)`: a qualified free function, not a type.
-                if name.isCandidate, resolution.isPlatformType == false, resolution.isModuleType == false,
-                   isPlatformFreeFunction(name.type.spelling)
-                    || table.isFreeFunction(name.type.spelling, from: context.file)
-                    || isThisModuleGlobal(name.type) {
-                    return nil
-                }
+            // `A.B(...)` targets the nested type `A.B` when one is declared,
+            // also under a platform type: `String.Limits` (Spec §7.3 step 4).
+            if let nested = nestedTarget(name) {
+                return reference(nested.name, resolution: nested.resolution)
             }
-            return reference(name, resolution: resolution)
+            resolution = resolved
+        } else {
+            resolution = table.resolve(name.type, from: context)
+            // `Foundation.NSLog(...)`: a qualified free function, not a type.
+            if name.isCandidate, resolution.isPlatformType == false, resolution.isModuleType == false,
+               isPlatformFreeFunction(name.type.spelling)
+                || table.isFreeFunction(name.type.spelling, from: context.file)
+                || isThisModuleGlobal(name.type) {
+                return nil
+            }
+            // `Lib.Form.State()` and `Lib::Form.State()`: the module stripped, then step 4.
+            if name.isCandidate, resolution.isModuleType, let nested = nestedTarget(name) {
+                return reference(nested.name, resolution: nested.resolution)
+            }
         }
+        return reference(name, resolution: resolution)
+    }
+
+    /// The longest `A.B…` an expression candidate continues with that names
+    /// a module type, if any.
+    private func nestedTarget(_ name: RawTypeName) -> (name: RawTypeName, resolution: TypeResolution)? {
+        for length in stride(from: name.trailingMembers.count, to: 0, by: -1) {
+            let components = name.type.components + name.trailingMembers.prefix(length)
+            let spelled = SpelledType(components: components, moduleSelector: name.type.moduleSelector)
+            let resolution = table.resolve(spelled, from: context)
+            if resolution.isModuleType {
+                var extended = name
+                extended.type = spelled
+                return (extended, resolution)
+            }
+        }
+        return nil
     }
 
     /// A reference from a resolution.

@@ -11,6 +11,11 @@ struct TypealiasFact: Codable, Hashable {
     var name: String
     /// Its target, when the target is a named type.
     var target: SpelledType?
+    /// The members of a protocol composition target, `P & Q` (Spec §9.5).
+    var compositionMembers: [SpelledType] = []
+    /// Whether the target binds generic arguments (`Box<Int>`, `[Int]`), so
+    /// an extension of the alias is constrained.
+    var isBoundGeneric = false
     /// The target's closure shape: a function type (escaping if optional), a
     /// named type to expand further, or neither.
     var closure: ClosureShape

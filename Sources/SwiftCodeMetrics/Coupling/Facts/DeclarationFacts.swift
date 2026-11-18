@@ -18,4 +18,6 @@ public struct DeclarationFacts: Sendable, Codable, Hashable {
     var freeFunctions: [FreeFunctionFact] = []
     /// Top-level typealiases.
     var typealiases: [TypealiasFact] = []
+    /// Names of `macro` declarations (Spec §9.1 `hasKnownAttachedMacro`).
+    var macroNames: [String] = []
 }

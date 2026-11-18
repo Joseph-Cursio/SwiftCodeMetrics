@@ -33,4 +33,18 @@ extension SymbolTable {
     func target(of fact: ExtensionDeclFact) -> TypeKey? {
         type(atPath: fact.extended.extensionPath(in: module), from: fact.file, localOwners: [])
     }
+
+    /// Where a merged extension belongs once the table is complete: its
+    /// module type, nil when its path now names something else, or where it
+    /// is when the path no longer resolves at all.
+    func settledTarget(_ entry: MergedExtension) -> TypeKey? {
+        if let key = target(of: entry.fact) {
+            return key
+        }
+        let resolution = resolve(
+            SpelledType(components: entry.fact.extended.extensionPath(in: module), moduleSelector: nil),
+            from: qualifierContext(file: entry.fact.file)
+        )
+        return resolution == .unresolved ? entry.key : nil
+    }
 }

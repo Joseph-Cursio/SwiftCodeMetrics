@@ -65,9 +65,8 @@ extension SymbolTable {
                 if nestedTypes(named: name, of: candidate, from: file).isEmpty == false {
                     return .some(nil)
                 }
-                if let found = entries[candidate]?.typealiases[name] {
-                    let isConflicting = entries[candidate]?.conflictingAliases.contains(name) == true
-                    return .some(isConflicting ? nil : found)
+                if let found = entries[candidate]?.alias(named: name, from: file) {
+                    return .some(found.isConflicting ? nil : found.alias)
                 }
             }
         }
@@ -96,10 +95,10 @@ extension SymbolTable {
         // `String.Transform`: an alias in an extension group.
         guard let key = owner.moduleKey ?? groupKey(for: ownerPath, resolution: owner),
               nestedTypes(named: name, of: key, from: context.file).isEmpty,
-              entries[key]?.conflictingAliases.contains(name) == false else {
+              let found = entries[key]?.alias(named: name, from: context.file), found.isConflicting == false else {
             return nil
         }
-        return entries[key]?.typealiases[name]
+        return found.alias
     }
 
     /// The nested types named `name` of `type`, local or not.

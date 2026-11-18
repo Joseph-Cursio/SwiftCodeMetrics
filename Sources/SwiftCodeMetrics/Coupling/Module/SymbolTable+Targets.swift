@@ -34,17 +34,32 @@ extension SymbolTable {
         type(atPath: fact.extended.extensionPath(in: module), from: fact.file, localOwners: [])
     }
 
+    /// The module type a path names from `file`, never an extension group.
+    func moduleType(atPath path: [String], from file: String) -> TypeKey? {
+        type(atPath: path, from: file, localOwners: []).flatMap { key in
+            entries[key]?.kind == .extensionGroup ? nil : key
+        }
+    }
+
+    /// The module type an extension extends, never an extension group.
+    func moduleTarget(of fact: ExtensionDeclFact) -> TypeKey? {
+        moduleType(atPath: fact.extended.extensionPath(in: module), from: fact.file)
+    }
+
     /// Where a merged extension belongs once the table is complete: its
-    /// module type, nil when its path now names something else, or where it
-    /// is when the path no longer resolves at all.
+    /// module type; nil when its path now names something else, a group or
+    /// a missing nested type of a module type included; or where it is
+    /// when the path no longer resolves at all.
     func settledTarget(_ entry: MergedExtension) -> TypeKey? {
-        if let key = target(of: entry.fact) {
+        if let key = moduleTarget(of: entry.fact) {
             return key
         }
+        let path = entry.fact.extended.extensionPath(in: module)
         let resolution = resolve(
-            SpelledType(components: entry.fact.extended.extensionPath(in: module), moduleSelector: nil),
+            SpelledType(components: path, moduleSelector: nil),
             from: qualifierContext(file: entry.fact.file)
         )
-        return resolution == .unresolved ? entry.key : nil
+        let isGone = resolution != .unresolved || isMissingNestedType(path, from: entry.fact.file)
+        return isGone ? nil : entry.key
     }
 }

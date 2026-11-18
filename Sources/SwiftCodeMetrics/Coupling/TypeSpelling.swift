@@ -89,6 +89,18 @@ enum TypeSpelling {
         }
     }
 
+    /// The named members of a composition `P & Q`, attributes unwrapped;
+    /// empty for any other type.
+    static func compositionMembers(_ type: TypeSyntax) -> [SpelledType] {
+        if let attributed = type.as(AttributedTypeSyntax.self) {
+            return compositionMembers(attributed.baseType)
+        }
+        guard let composition = type.as(CompositionTypeSyntax.self) else {
+            return []
+        }
+        return composition.elements.compactMap { spelled($0.type) }
+    }
+
     /// The names a generic parameter clause declares.
     static func names(of clause: GenericParameterClauseSyntax?) -> [String] {
         clause?.parameters.map { SyntaxFacts.name($0.name) } ?? []

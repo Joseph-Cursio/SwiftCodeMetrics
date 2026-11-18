@@ -41,7 +41,8 @@ extension FunctionCollector {
             associatedTypes: facts.associatedTypes,
             inherited: inherited,
             members: facts.members,
-            typealiases: facts.typealiases
+            typealiases: facts.typealiases,
+            declaration: TypeDeclarationReader.read(node, writtenName: node.name.text)
         ))
         pushType(
             name: node.name.text,
@@ -66,7 +67,11 @@ extension FunctionCollector {
                 extended: extended,
                 members: facts.members,
                 typealiases: facts.typealiases,
-                file: context.file ?? ""
+                file: context.file ?? "",
+                declaration: TypeDeclarationReader.read(
+                    node,
+                    writtenName: CanonicalText.render(node.extendedType)
+                )
             ))
         }
         pushExtension(node)
@@ -96,11 +101,11 @@ extension FunctionCollector {
 
     /// Records an import.
     func recordImport(_ node: ImportDeclSyntax) {
-        guard let module = node.path.first?.name.text else {
+        guard let module = node.path.first.map({ SyntaxFacts.name($0.name) }) else {
             return
         }
-        let isExported = node.attributes.contains { element in
-            element.as(AttributeSyntax.self)?.attributeName.trimmedDescription == "_exported"
+        let isExported = SyntaxFacts.attributes(node.attributes).contains { attribute in
+            attribute.attributeName.trimmedDescription == "_exported"
         }
         imports.append(ImportFact(
             module: module,
@@ -189,7 +194,8 @@ extension FunctionCollector {
             typeNames: signatureCollector.typeNames + bodyCollector.typeNames,
             macroExpansionCount: bodyCollector.macroExpansionCount,
             carriesParameters: parameters != nil,
-            parameters: parameters ?? []
+            parameters: parameters ?? [],
+            cohesion: bodyCollector.cohesion
         )
     }
 }

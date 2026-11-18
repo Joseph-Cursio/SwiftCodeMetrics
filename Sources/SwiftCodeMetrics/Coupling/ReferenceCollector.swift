@@ -22,6 +22,8 @@ final class ReferenceCollector: OwnBodyVisitor {
     private(set) var typeNames: [RawTypeName] = []
     /// Freestanding macro expansions.
     private(set) var macroExpansionCount = 0
+    /// Uses of `self` for the cohesion graph.
+    private(set) var cohesion = RawCohesionFacts()
 
     /// `signature` or `body`.
     private let edgeKind: EdgeKind
@@ -64,6 +66,10 @@ final class ReferenceCollector: OwnBodyVisitor {
     }
 
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
+        if node.baseName.tokenKind == .keyword(.self) {
+            noteSelf(node)
+            return .visitChildren
+        }
         // A member's name in `a.b` and a key-path component `\.b` name members
         // of another type, not unqualified values (Spec §7.2).
         guard callees.contains(node.id) == false, case .identifier = node.baseName.tokenKind,
@@ -85,7 +91,14 @@ final class ReferenceCollector: OwnBodyVisitor {
                 offset: offset(node)
             ))
         } else {
-            names.append(RawName(name: name, lookup: lookup, offset: offset(node), isTypePosition: isTypePosition))
+            names.append(RawName(
+                name: name,
+                lookup: lookup,
+                offset: offset(node),
+                isTypePosition: isTypePosition,
+                isCompound: node.argumentNames != nil,
+                labels: node.argumentNames?.arguments.map { SyntaxFacts.name($0.name) } ?? []
+            ))
         }
         addQualifiedCandidate(node, root: name)
         if isTypePosition, CalleeReader.startsUppercase(name) {
@@ -122,10 +135,66 @@ final class ReferenceCollector: OwnBodyVisitor {
     }
 
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
-        if CalleeReader.isCallee(node) == false, let read = CalleeReader.memberRead(node) {
+        let isCallee = CalleeReader.isCallee(node)
+        if isCallee == false, let read = CalleeReader.memberRead(node) {
             memberReads.append(read)
         }
+        if isCallee == false, let base = node.base {
+            // `self.f(y:)` keeps its labels, so it picks one overload.
+            let labels = node.declName.argumentNames.map { names in
+                "(" + names.arguments.map { SyntaxFacts.name($0.name) + ":" }.joined() + ")"
+            } ?? ""
+            let member = SyntaxFacts.name(node.declName.baseName) + labels
+            if SelfExpressions.isSelf(base) {
+                cohesion.selfMembers.append(member)
+            } else if base.is(SuperExprSyntax.self) {
+                cohesion.superMembers.append(member)
+            }
+        }
         return .visitChildren
+    }
+
+    // MARK: - Cohesion
+
+    /// `if let a` and `guard let a` read the member `a` (Spec §9.3 rule 3).
+    override func visit(_ node: OptionalBindingConditionSyntax) -> SyntaxVisitorContinueKind {
+        if node.initializer == nil, let pattern = node.pattern.as(IdentifierPatternSyntax.self),
+           pattern.identifier.identifier != nil {
+            cohesion.shorthandBindings.append(RawName(
+                name: SyntaxFacts.name(pattern.identifier),
+                lookup: NameLookup.lookup(pattern.identifier, from: node),
+                offset: offset(pattern),
+                isTypePosition: false
+            ))
+        }
+        return .visitChildren
+    }
+
+    /// A key path's root and first property component (Spec §9.3 rule 5).
+    override func visit(_ node: KeyPathExprSyntax) -> SyntaxVisitorContinueKind {
+        if case .property(let property)? = node.components.first?.component {
+            let root = node.root.flatMap { TypeSpelling.spelled($0)?.components } ?? []
+            cohesion.keyPaths.append(RawKeyPath(
+                root: root,
+                firstComponent: SyntaxFacts.name(property.declName.baseName)
+            ))
+        }
+        return .visitChildren
+    }
+
+    /// A `self` that is not the base of a member access, the base of a
+    /// subscript call, a callee or a capture is the whole value (rule 6).
+    private func noteSelf(_ node: DeclReferenceExprSyntax) {
+        switch SelfExpressions.use(of: node) {
+        case .subscriptBase:
+            cohesion.selfSubscriptUses += 1
+
+        case .whole:
+            cohesion.wholeSelfUses += 1
+
+        case .other:
+            break
+        }
     }
 
     /// An attribute's name (`@escaping`, `@Sendable`) is not a type reference.

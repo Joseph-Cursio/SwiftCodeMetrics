@@ -16,4 +16,8 @@ struct RawName: Codable, Hashable {
     /// Whether it is the base of a member access or a generic specialisation,
     /// where an uppercase name is a type-name candidate (Spec §7.3).
     var isTypePosition: Bool
+    /// Whether it is a compound reference `f(y:)`, which names one overload.
+    var isCompound = false
+    /// A compound reference's labels.
+    var labels: [String] = []
 }

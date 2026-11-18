@@ -100,6 +100,11 @@ final class FunctionCollector: SyntaxVisitor {
         popScope(owner: node.id)
     }
 
+    override func visit(_ node: MacroDeclSyntax) -> SyntaxVisitorContinueKind {
+        declarations.macroNames.append(SyntaxFacts.name(node.name))
+        return .skipChildren
+    }
+
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         openExtension(node)
         return .visitChildren

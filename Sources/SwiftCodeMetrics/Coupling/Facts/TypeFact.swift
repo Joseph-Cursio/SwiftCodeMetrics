@@ -33,4 +33,6 @@ struct TypeFact: Codable, Hashable {
     var members: [MemberFact]
     /// Member typealiases.
     var typealiases: [TypealiasFact]
+    /// Declaration-level facts for type metrics.
+    var declaration: TypeDeclarationFacts
 }

@@ -15,4 +15,6 @@ struct ExtensionDeclFact: Codable, Hashable {
     var typealiases: [TypealiasFact]
     /// The declaring file.
     var file: String
+    /// Declaration-level facts for type metrics.
+    var declaration: TypeDeclarationFacts
 }

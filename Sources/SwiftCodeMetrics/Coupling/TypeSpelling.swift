@@ -20,6 +20,10 @@ enum TypeSpelling {
             return spelled(attributed.baseType)
         }
         if let identifier = type.as(IdentifierTypeSyntax.self) {
+            // A placeholder (`[String: _]`, SE-0315) names no type.
+            guard identifier.name.tokenKind != .wildcard else {
+                return nil
+            }
             return SpelledType(
                 components: [SyntaxFacts.name(identifier.name)],
                 moduleSelector: identifier.moduleSelector?.moduleName.text

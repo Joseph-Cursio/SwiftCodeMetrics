@@ -198,7 +198,7 @@ final class SymbolTable {
                 entry.inherited = fact.inherited
             }
             for alias in fact.typealiases {
-                entry.typealiases[alias.name] = alias
+                entry.add(alias)
             }
             entries[key] = entry
             return
@@ -214,7 +214,7 @@ final class SymbolTable {
         entry.enclosingTypePath = fact.enclosingTypePath
         entry.enclosingLocalOwner = fact.enclosingLocalOwner
         for alias in fact.typealiases {
-            entry.typealiases[alias.name] = alias
+            entry.add(alias)
         }
         entries[key] = entry
         if let owner = fact.localTo {
@@ -259,7 +259,7 @@ final class SymbolTable {
                 }
                 entries[key]?.members += fact.members
                 for alias in fact.typealiases {
-                    entries[key]?.typealiases[alias.name] = alias
+                    entries[key]?.add(alias)
                 }
                 pathMemo = [:]
                 progress = true
@@ -294,7 +294,7 @@ final class SymbolTable {
             }
             entries[key]?.members += fact.members
             for alias in fact.typealiases {
-                entries[key]?.typealiases[alias.name] = alias
+                entries[key]?.add(alias)
             }
         }
         pathMemo = [:]

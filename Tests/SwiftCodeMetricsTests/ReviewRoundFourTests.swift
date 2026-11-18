@@ -66,6 +66,89 @@ struct ReviewRoundFourTests {
         #expect(type?.bucket == .module)
         #expect(type?.target?.path == ["Token", "Type"])
     }
+    @Test("a typealias whose #if variants reach different types is ambiguous (Spec §7.3)")
+    func clauseAliasVariants() {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            struct LiveClient { }
+            struct MockClient { }
+            #if DEBUG
+            typealias Client = MockClient
+            typealias Same = LiveClient
+            #else
+            typealias Client = LiveClient
+            typealias Same = LiveClient
+            #endif
+            struct Holder {
+                #if DEBUG
+                typealias Handler = () -> Void
+                #else
+                typealias Handler = Int
+                #endif
+            }
+            func load(using client: Client) { }
+            func same(_ value: Same) { }
+            func held(_ value: Holder.Handler) { }
+            """)
+        ])
+
+        #expect(Modules.record("load(using:)", in: analysis)?.typeReferences.map(\.resolution) == [.ambiguous])
+        #expect(Modules.record("same(_:)", in: analysis)?.typeReferences.first?.target?.path == ["LiveClient"])
+        #expect(Modules.record("held(_:)", in: analysis)?.parameters?.closureParameterCount == 0)
+    }
+    @Test("Self.State names an associated type; Self in a group of an alias is the target")
+    func selfMembers() {
+        let analysis = Modules.analysis("Lib", [
+            ("A.swift", """
+            protocol Store {
+                associatedtype State
+                var state: State { get }
+            }
+            extension Store {
+                func snapshot() -> Self.State { state }
+            }
+            typealias Celsius = Double
+            extension Celsius {
+                static func fromKelvin(_ value: Double) -> Self { value - 273.15 }
+            }
+            extension String {
+                enum Grade { case short, long }
+                func grade() -> Self.Grade { .short }
+            }
+            """)
+        ])
+
+        #expect(Modules.record("snapshot()", in: analysis)?.typeReferences.isEmpty == true)
+        #expect(Modules.record("fromKelvin(_:)", in: analysis)?.typeReferences.map(\.bucket) == [.platform, .platform])
+        let grade = Modules.record("grade()", in: analysis)?.typeReferences.first
+        #expect(grade?.bucket == .module)
+        #expect(grade?.target?.path == ["String", "Grade"])
+    }
+    @Test("a placeholder type adds no reference")
+    func placeholderType() {
+        let record = record("tally()", """
+        func tally() -> [String: Int] {
+            let counts: [String: _] = ["a": 1]
+            return counts
+        }
+        """)
+
+        #expect(record?.typeReferences.contains { $0.spelling == "_" } == false)
+    }
+    @Test("closure aliases: a function-local type shadows the enclosing type's alias")
+    func localTypeShadowsMemberAlias() {
+        let record = record("perform(_:)", """
+        struct Screen {
+            typealias Action = () -> Void
+            func run() {
+                struct Action { var title = "" }
+                func perform(_ action: Action) { _ = action.title }
+            }
+        }
+        """)
+
+        #expect(record?.parameters?.closureParameterCount == 0)
+    }
     @Test("recursion through backticked names and labels (Spec §3.4)")
     func backtickedRecursion() {
         let functions = complexity("""

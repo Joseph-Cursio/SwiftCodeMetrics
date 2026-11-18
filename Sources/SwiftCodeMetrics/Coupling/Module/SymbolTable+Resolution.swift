@@ -42,9 +42,13 @@ extension SymbolTable {
             guard let current = context.chain.first else {
                 return .genericParameter
             }
-            // `Self` in an extension of a platform type is that type, not a module type.
+            let rest = components.dropFirst()
             if entries[current]?.kind == .extensionGroup {
-                return fallback(current.path + components.dropFirst(), context: context)
+                return resolveInGroup(current, rest: rest, context: context, visiting: &visiting)
+            }
+            // `Self.State` names an associated type or generic parameter.
+            if let member = rest.first, entries[current]?.genericParameters.contains(member) == true {
+                return .genericParameter
             }
             return descend(
                 from: .module(current),
@@ -89,10 +93,49 @@ extension SymbolTable {
         if let only = tops.first {
             return tops.count == 1 ? .module(only) : .ambiguous
         }
-        if let alias = visibleAliases(name, from: context.file).first {
-            return expand(alias, context: context, visiting: &visiting)
+        let aliases = visibleAliases(name, from: context.file)
+        guard let first = aliases.first else {
+            return nil
         }
-        return nil
+        let expanded = expand(first, context: context, visiting: &visiting)
+        // `#if` variants of one alias that reach different types are ambiguous.
+        for other in aliases.dropFirst() where expand(other, context: context, visiting: &visiting) != expanded {
+            return .ambiguous
+        }
+        return expanded
+    }
+
+    /// `Self` and `Self.X` inside an extension group: the group's own nested
+    /// types and typealiases first, then the extended type itself, with a
+    /// module typealias expanded (`extension Celsius` where `Celsius = Double`).
+    private func resolveInGroup(
+        _ group: TypeKey,
+        rest: ArraySlice<String>,
+        context: ResolutionContext,
+        visiting: inout Set<String>
+    ) -> TypeResolution {
+        if let member = rest.first, let found = memberType(member, of: group, context: context, visiting: &visiting) {
+            return descend(from: found, through: rest.dropFirst(), context: context, visiting: &visiting)
+        }
+        let extended = resolve(
+            SpelledType(components: group.path, moduleSelector: nil),
+            from: fileScope(of: context),
+            visiting: &visiting
+        )
+        return descend(from: extended, through: rest, context: context, visiting: &visiting)
+    }
+
+    /// `context` at file scope: no enclosing types, generics or locals.
+    private func fileScope(of context: ResolutionContext) -> ResolutionContext {
+        ResolutionContext(
+            file: context.file,
+            knownModules: [],
+            importsXCTest: context.importsXCTest,
+            importsFoundation: context.importsFoundation,
+            chain: [],
+            genericParameters: [],
+            localOwners: []
+        )
     }
 
     /// A nested type or member typealias of a chain type or its superclasses.
@@ -130,6 +173,9 @@ extension SymbolTable {
         }
         guard let alias = entries[type]?.typealiases[name] else {
             return nil
+        }
+        if entries[type]?.conflictingAliases.contains(name) == true {
+            return .ambiguous
         }
         return expand(alias, context: context, visiting: &visiting)
     }
@@ -206,16 +252,11 @@ extension SymbolTable {
     ) -> TypeResolution {
         let dotted = rest.joined(separator: ".")
         if qualifier == module {
-            let topLevel = ResolutionContext(
-                file: context.file,
-                knownModules: [],
-                importsXCTest: context.importsXCTest,
-                importsFoundation: context.importsFoundation,
-                chain: [],
-                genericParameters: [],
-                localOwners: []
+            return resolve(
+                SpelledType(components: rest, moduleSelector: nil),
+                from: fileScope(of: context),
+                visiting: &visiting
             )
-            return resolve(SpelledType(components: rest, moduleSelector: nil), from: topLevel, visiting: &visiting)
         }
         let isPlatform = PlatformModules.harvested.contains(qualifier)
             || (qualifier == PlatformModules.xcTest && context.importsXCTest)
@@ -259,21 +300,50 @@ extension SymbolTable {
         guard components.count == 1 else {
             return memberAlias(components, from: context)
         }
-        for type in context.chain {
+        // The §7.3 order: local types' chain, function-local types, the
+        // outer chain, then module top level.
+        let localChain = context.chain.prefix { $0.localTo != nil }
+        if let found = chainAlias(name, in: localChain, from: context.file) {
+            return found
+        }
+        if context.localOwners.contains(where: { locals[$0]?[[name]] != nil }) {
+            return nil
+        }
+        if let found = chainAlias(name, in: context.chain.dropFirst(localChain.count), from: context.file) {
+            return found
+        }
+        if visible(byPath[[name]] ?? [], from: context.file).isEmpty == false {
+            return nil
+        }
+        let aliases = visibleAliases(name, from: context.file)
+        // `#if` variants with different targets name no one alias.
+        guard let first = aliases.first,
+              aliases.allSatisfy({ $0.target == first.target && $0.closure == first.closure }) else {
+            return nil
+        }
+        return first
+    }
+
+    /// What the first chain type, or superclass, with a nested type or member
+    /// typealias named `name` gives: `.some(alias)`, or `.some(nil)` when a
+    /// nested type shadows it or its variants conflict. Nil when none has one.
+    private func chainAlias(
+        _ name: String,
+        in chain: ArraySlice<TypeKey>,
+        from file: String
+    ) -> TypealiasFact?? {
+        for type in chain {
             for candidate in [type] + superclasses(of: type) {
-                if nestedTypes(named: name, of: candidate, from: context.file).isEmpty == false {
-                    return nil
+                if nestedTypes(named: name, of: candidate, from: file).isEmpty == false {
+                    return .some(nil)
                 }
                 if let found = entries[candidate]?.typealiases[name] {
-                    return found
+                    let isConflicting = entries[candidate]?.conflictingAliases.contains(name) == true
+                    return .some(isConflicting ? nil : found)
                 }
             }
         }
-        if context.localOwners.contains(where: { locals[$0]?[[name]] != nil })
-            || visible(byPath[[name]] ?? [], from: context.file).isEmpty == false {
-            return nil
-        }
-        return visibleAliases(name, from: context.file).first
+        return nil
     }
 
     /// `Module.rest` or `Module::rest`, when the name is module-qualified.
@@ -297,7 +367,8 @@ extension SymbolTable {
         let owner = resolve(SpelledType(components: ownerPath, moduleSelector: nil), from: context)
         // `String.Transform`: an alias in an extension group sits on its written path.
         guard let key = owner.moduleKey ?? extensionGroups[ownerPath],
-              nestedTypes(named: name, of: key, from: context.file).isEmpty else {
+              nestedTypes(named: name, of: key, from: context.file).isEmpty,
+              entries[key]?.conflictingAliases.contains(name) == false else {
             return nil
         }
         return entries[key]?.typealiases[name]

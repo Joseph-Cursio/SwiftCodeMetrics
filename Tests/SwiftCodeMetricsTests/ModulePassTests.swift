@@ -46,7 +46,7 @@ struct ModulePassTests {
             "DispatchQueue.init(label:)", "XCTAssertEqual.init(_:_:)", "free.NSLog(_:)"
         ])
         #expect(analysis.version.platformTable == "27.2")
-        #expect(analysis.version.couplingDefinition == "coupling-1")
+        #expect(analysis.version.couplingDefinition == "coupling-2")
     }
 
     @Test("functions, statics and globals the module declares win over the platform table")

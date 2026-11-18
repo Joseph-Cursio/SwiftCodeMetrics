@@ -13,7 +13,7 @@ public struct MetricsVersion: Sendable, Codable, Hashable {
         library: "0.2.0",
         swiftSyntax: "603.0.2",
         complexityDefinition: "complexity-1",
-        couplingDefinition: "coupling-1",
+        couplingDefinition: "coupling-2",
         platformTable: nil,
         swiftLintReference: "0.65.1"
     )

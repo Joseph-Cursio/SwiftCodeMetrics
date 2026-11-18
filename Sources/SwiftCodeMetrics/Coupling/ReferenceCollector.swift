@@ -70,6 +70,12 @@ final class ReferenceCollector: OwnBodyVisitor {
             noteSelf(node)
             return .visitChildren
         }
+        if node.baseName.tokenKind == .keyword(.Self) {
+            if let candidate = SelfExpressions.selfTypeCandidate(node, edgeKind: edgeKind) {
+                typeNames.append(candidate)
+            }
+            return .visitChildren
+        }
         // A member's name in `a.b` and a key-path component `\.b` name members
         // of another type, not unqualified values (Spec §7.2).
         guard callees.contains(node.id) == false, case .identifier = node.baseName.tokenKind,
@@ -107,7 +113,8 @@ final class ReferenceCollector: OwnBodyVisitor {
                 edgeKind: edgeKind,
                 offset: offset(node),
                 isCandidate: true,
-                lookup: lookup
+                lookup: lookup,
+                trailingMembers: SelfExpressions.trailingMembers(after: node)
             ))
         }
         return .visitChildren
@@ -130,7 +137,8 @@ final class ReferenceCollector: OwnBodyVisitor {
             offset: offset(access.declName),
             isCandidate: true,
             lookup: [],
-            qualifierMustBeModule: true
+            qualifierMustBeModule: true,
+            trailingMembers: SelfExpressions.trailingMembers(after: access)
         ))
     }
 

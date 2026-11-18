@@ -1745,7 +1745,7 @@ The draft of Part B named three remaining worst cases as real findings. Two were
   - `.importKindSpecifier`: scoped imports;
   - `.path.first?.name`: the module.
   - The enclosing `IfConfigClauseSyntax.condition` is kept, for example `#if canImport(X)`.
-- **Module edges.** `PackageAnalysis.moduleEdges` has one `ModuleDependency` per `import` declaration in the scanned modules: `from` is the importing module, `to` the imported module, `viaExported` is true when the import is `@_exported`, `condition` is the enclosing `#if` condition (nil outside any `#if`), and `provenance` is `.import`. A module imported from several files gives several edges; a consumer that wants one edge per module pair deduplicates them.
+- **Module edges.** `PackageAnalysis.moduleEdges` has one `ModuleDependency` per `import` declaration in the scanned modules: `source` is the importing module, `target` the imported module, `viaExported` is true when the import is `@_exported`, `condition` is the enclosing `#if` condition (nil outside any `#if`), and `provenance` is `.import`. A module imported from several files gives several edges; a consumer that wants one edge per module pair deduplicates them.
 - **Used for:** SwiftProjectLint `undeclaredTargetDependency` and `unusedTargetDependency` could read these facts. SwiftStats module structure.
 
 ### 10.2 `ceAll`, `cePackage`, `ceWithReexports`, `ca`, `instability`
@@ -2278,7 +2278,7 @@ public struct CohesionOptions: Sendable, Hashable, Codable {
     public var excludeDescriptionWitnesses = true                  // §9.3, Q21
     public var wholeSelfInStructs = true                           // §9.3 rule 6, Q20
     public var dropAttributeFreeComponents = true                  // §9.3, Q22
-    public var inheritedAttributesFromModuleSuperclasses = true    // §9.3, Q32
+    public var inheritsModuleSuperclassAttributes = true           // §9.3, Q32
     public init() {}
 }
 ```
@@ -2523,7 +2523,7 @@ public struct TypeResult: Sendable, Codable {
     public var sizes: TypeSizes                      // nom (partition and subsets), noa, storedProperties, caseCount
     public var wmc: WMC                              // cognitive, decisions (or wmcDefaults for protocols)
     public var cohesion: CohesionResult
-    public var coupling: TypeCouplingSummary         // ce, ceConcrete, ceProtocol, ceView, ceNamespace,
+    public var coupling: TypeCouplingSummary         // ceTotal, ceConcrete, ceProtocol, ceView, ceNamespace,
                                                      // ceFamily, internalRefs, externalNameCount,
                                                      // platformNameCount, caWithinModule,
                                                      // unresolved and ambiguous counts
@@ -2570,7 +2570,7 @@ public struct ConformanceFact: Sendable, Codable, Hashable {
 }
 
 public struct PackageAnalysis: Sendable, Codable {
-    public var modules: [ModuleCoupling]             // ceAll, cePackage, ceWithReexports, ca,
+    public var modules: [ModuleCoupling]             // ceAll, cePackage, ceWithReexports, caDirect,
                                                      // caWithReexports, caTests, instability
     public var moduleEdges: [ModuleDependency]
     public var version: MetricsVersion
@@ -2609,21 +2609,21 @@ public enum EdgeKind: String, Sendable, Codable {
 }
 
 public struct TypeCoupling: Sendable, Codable {
-    public var from: TypeKey; public var to: TypeKey
+    public var source: TypeKey; public var target: TypeKey
     public var kinds: Set<EdgeKind>
     public var isWeakOrUnowned: Bool                 // only if every storedProperty contribution is weak or unowned (§9.4)
     public var targetClass: TargetClass?             // protocol, view, namespace, concrete
     public var provenance: Provenance; public var resolution: Resolution
     public var usr: String?                          // filled by the index collector only
-    public init(from: TypeKey, to: TypeKey, kinds: Set<EdgeKind>, isWeakOrUnowned: Bool,
+    public init(source: TypeKey, target: TypeKey, kinds: Set<EdgeKind>, isWeakOrUnowned: Bool,
                 targetClass: TargetClass?, provenance: Provenance, resolution: Resolution,
                 usr: String? = nil)
 }
 public struct ModuleDependency: Sendable, Codable {
-    public var from: String; public var to: String
+    public var source: String; public var target: String
     public var viaExported: Bool; public var condition: String?
     public var provenance: ModuleDependencyProvenance   // import, index (§10.1)
-    public init(from: String, to: String, viaExported: Bool, condition: String?,
+    public init(source: String, target: String, viaExported: Bool, condition: String?,
                 provenance: ModuleDependencyProvenance)
 }
 ```
@@ -2873,6 +2873,7 @@ Each question has a recommendation the owner can accept or overturn. Questions m
 
 **Q28. Associated-type names that collide with top-level module types.**
 - **Recommendation:** accept the false edge in v1 and count it in tests on the corpora. If it matters, use the platform table's `associatedtype` names to suppress `Element`, `Index`, `Iterator`, `SubSequence` and the like inside types that conform to the declaring protocol.
+- **v0.3 corpus report (2026-11-17).** Distinct unresolved and ambiguous type names, summed over types: swift-collections 15 and 0, swift-nio 1 and 75, GRDB 23 and 10, TCA 23 and 0, SwiftProjectLint 1 and 0, SwiftStats 0 and 0. The false edges this question describes are not counted separately; they resolve, so they appear as ordinary module edges.
 
 **Q29. Should the library define `ChangeCouplingPair`?**
 - **Recommendation:** no. Only SwiftStats' history collector produces and consumes it, so it stays in SwiftStats. The library defines the static-edge shapes (`TypeCoupling`, `ModuleDependency`), which two producers share: the library and the index collector.
@@ -2882,6 +2883,7 @@ Each question has a recommendation the owner can accept or overturn. Questions m
 
 **Q31. A `lowCohesionType` rule in SwiftProjectLint.**
 - **Recommendation:** add it as opt-in. Fire when LCOM4 ≥ 2 and each counted component has ≥ 3 members. Skip types with `hasKnownAttachedMacro`. Calibrate k on the six corpora, over types with |A| ≥ 2, before turning it on by default.
+- **v0.3 corpus report (2026-11-17).** Types with LCOM4 > 1 over types with |A| ≥ 2: swift-collections 4 of 105 (3.8%), swift-nio 16 of 291 (5.5%), GRDB 12 of 195 (6.2%), TCA 4 of 96 (4.2%), SwiftProjectLint 1 of 38 (2.6%), SwiftStats 1 of 27 (3.7%). The modules are each corpus's `Sources/<target>` directories (GRDB's `GRDB` directory). k is not yet calibrated.
 
 **Q32. Subclasses of module classes: inherit attributes, or null?**
 - **Recommendation:** inherit (§9.3), with `attributeCount` reported beside `noa`. The alternative is a null reason `inheritsModuleState`. It is simpler, but it leaves every such subclass unmeasured, and it would hide a subclass that really does split.
@@ -3219,4 +3221,29 @@ Two independent checks of the merged text led to these changes. No worked-exampl
   - A typed `throws(E)` type is a `signature` reference, for functions, initialisers and accessors.
   - Part A (fourth round): recursion matching ignores backticks on names and labels (`` func `default`(depth:) `` calling `Self.default(depth:)`). `<top-level code>`'s SL count skips types and extensions inside a top-level `#if` that also holds statements, and its `hasSyntaxErrors` covers every item in its range, declarations between the statements included (§2.8).
 - **Speed (§16).** The 2 s target is checked in an optimised build: a release build took 1.0 s over swift-collections' 576 files with sequential file passes. `analyzeModule(_:)` now runs the file passes in parallel. The test suite enforces 2 s in release builds and a loose bound in debug builds.
+
+### Changes made during the v0.3 implementation
+
+- **Names of three or more characters.** SwiftLint's `identifier_name` rule rejects `from`, `to`, `ce` and `ca`, so the API spells them `TypeCoupling.source`/`target`, `ModuleDependency.source`/`target`, `TypeCouplingSummary.ceTotal` and `ModuleCoupling.caDirect`. The metrics keep their names in the text. `CohesionOptions.inheritedAttributesFromModuleSuperclasses` is `inheritsModuleSuperclassAttributes`, under the 40-character limit.
+- **`A.B` in an expression (§7.3 step 4).** An expression candidate followed by uppercase member names (`SyncUpForm.State(...)`) targets the longest prefix that names a module type, here the nested `SyncUpForm.State`, as §12.7 counts it. This also changes function `typeReferences`, so `couplingDefinition` is `coupling-2`.
+- **Members.** A member is identified by its key without `#if` conditions, numbering or accessor, so accessors of one property or subscript form one member and `#if` variants merge (§2.6). NOM and the cohesion nodes come from the function records a type owns; a nested function belongs to the member around it. A protocol's NOM comes from its requirements, `#if` variants merged.
+- **Shapes not spelled out in §13.5.** `TypeSizes` holds the §9.1 counts and `storedProperties`; `WMC` has `cognitive`, `decisions` and `isDefaults` (true for `wmcDefaults`); `CohesionComponent` has `members`, `attributes`, `extensions` and `includesPrimaryDeclaration`; `ExclusionReason` has one case per row of the §9.3 table plus `observer`; `TypeCouplingSummary` counts distinct names, with `internalRefs` the number of distinct family types named; `ModuleCoupling` holds counts only.
+- **Not-applicable kinds.** For an enum, protocol or extension group, the cohesion graph is not built: `components`, `isolatedMembers`, `excludedMembers` and the reference lists are empty and `nodeCount` is 0.
+- **Edge kinds.** An inheritance-clause name becomes `refinement` (protocol to protocol), `conformance` (other type to protocol) or `inheritance` (any other target). Generic arguments inside an inheritance clause get the same kind as the entry they appear in. Every stored property's annotation and initial value counts, static ones included; only instance properties are attributes.
+- **Custom attributes** are the attribute names written with an uppercase first letter. `hasKnownAttachedMacro` matches the last dotted component of a name, generic arguments stripped.
+- **Order.** `types` follows the first declaration of each type: file order, then offset. `typeEdges` follows `types`, each type's edges sorted by target. Each `typeCycles` component is sorted, and the components by their first type.
+- **Corpus report.** It takes about half a minute in a debug build, so it runs only when `SCM_CORPUS_REPORT` is set. Its figures are recorded under Q28 and Q31. The §16 speed test keeps its 2 s bound in release builds; its debug bound is 30 s, because the corpus suites run beside it.
+- **Decisions from the first v0.3 review round** (each with a regression test):
+  - Members: a private member's key carries its file, so same-text private members in two files are two members, and WMC adds them. A function inside a stored property's initial value is a WMC term but not a member or a cohesion node. Protocol requirements that differ in labels or types are separate; a default matches a requirement by base name and labels, initialisers and subscripts included. Enum cases count by name and labels (`move(x:)`, `move(dx:)`). Attributes inside a `#if` in an attribute list are read. `extension Swift.String` joins the `String` group.
+  - Cohesion: calling a stored closure property touches it. A read of a stored property is a touch, never an edge to a method with the same base name, and a call with no label match on a name that is a stored property is the closure, not those methods. Rule 4 applies to `self.$a` and `self._a`.
+  - Coupling: a protocol's requirement signatures (parameter, result, `throws` and property types) are `signature` references in `declarationTypeReferences`; a requirement's or a generic typealias's own generic parameters are not references. `A.B` in an expression reaches nested types under a platform type (`String.Limits`), after a module qualifier (`Lib.Form.State()`, `Lib::Form.State()`), after `Self` (`Self.State()`), and through a specialisation (`Box<Int>.Item()`); `A.B` also finds nested types of A's in-module superclasses. Generic arguments in an inheritance entry take the kind its first name gives.
+  - Conformances: a typealias composition in an inheritance clause expands into its protocols, for conformances, conformerCount and `conformance` or `refinement` edges, and is never a possible superclass. An extension with bound generic arguments (`extension Box<Int>: P`) is constrained, so its conformances are conditional. Unresolved extensions resolve their conformances' targets and flag them the same way.
+  - Module level: an import's module name is read without backticks.
+- **Decisions from the second v0.3 review round** (each with a regression test):
+  - Extension groups are keyed by the type the extended name resolves to, with any module qualifier stripped and module typealiases, member ones included, expanded: `extension Swift.String`, `extension String` and `extension Text` where `Text = String` form one group, as do `extension SwiftUI.View` and `extension View`. A group never takes a module type's key: in a module that declares `Result`, `extension Swift.Result` keeps its written path. Types nested in a group sit under its key (`String.Limits`). `extension User.ID` where `ID = UUID` is a group, not an unresolved extension.
+  - Members: computed property requirements that differ in type across `#if` clauses are two; an operator default matches its requirement by arity, since operators have no argument labels. A context's file (a private subscript with explicit accessors) is part of the member's identity. A function in an initial value is not a member even when its signature uses a module selector. In `var a, b: Int` both facts get `Int`. A freestanding macro in a member block (`#warning`) is not an instance member, so the enum around it can still be a namespace.
+  - Cohesion: `T.self` and `\.self` are not whole-`self` uses. A `_name` declared as such, own or inherited, is not a wrapper name. A call is a touch of a stored closure property only when no method with those labels exists. A compound reference (`self.f(y:)` or `f(y:)`) joins the one overload its labels name. A computed property read joins the property node, not methods with the same base name.
+  - Coupling: a subscript requirement's own generic constraints and `where` clause, and the typed `throws` of property and subscript requirement accessors, are `signature` references. Generic arguments of a platform protocol entry (`protocol Store: Collection<Item>`) take its kind: `refinement` in a protocol, `conformance` elsewhere. A property wrapper inside a `#if` in the attribute list gives a `wrapper` edge.
+  - Conformances: typealias compositions expand recursively, through nested compositions and alias chains; a module class in a composition is the class's superclass, with an `inheritance` edge, and is not a conformance. An extension of a typealias to a bound generic type (`IntBox = Box<Int>`) is constrained.
+  - Module level: `@_exported` inside a `#if` in an import's attribute list is read.
 

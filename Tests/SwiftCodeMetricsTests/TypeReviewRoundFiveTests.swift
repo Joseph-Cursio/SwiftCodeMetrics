@@ -49,6 +49,27 @@ struct TypeReviewRoundFiveTests {
         #expect(config.sizes.nom == 0)
     }
 
+    @Test("a typealias in a private extension is file-private")
+    func privateExtensionAliases() throws {
+        let analysis = Modules.analysis("App", [
+            ("A.swift", """
+            struct Store {}
+            struct Row {}
+            private extension Store { typealias Item = Row }
+            extension Store.Item { func render() -> String { "" } }
+            """),
+            ("B.swift", """
+            struct Cell {}
+            private extension Store { typealias Item = Cell }
+            """)
+        ])
+        let row = try #require(Modules.type("Row", in: analysis))
+
+        #expect(row.sizes.nom == 1)
+        #expect(row.extensions.count == 1)
+        #expect(analysis.unresolvedExtensions.isEmpty)
+    }
+
     @Test("an unresolved extension's records join no group another file spells the same way")
     func unresolvedExtensionRecords() throws {
         let analysis = Modules.analysis("App", [

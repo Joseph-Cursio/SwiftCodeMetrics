@@ -86,4 +86,75 @@ struct TypeReviewRoundFourCouplingTests {
         #expect(child.cohesion.inheritedMemberRefs.contains("update(with:)") == false)
         #expect(child.cohesion.isolatedMembers.isEmpty)
     }
+
+    @Test("compositions: `any` aliases name their members; platform members of an inherited alias count")
+    func compositionMembers() throws {
+        let analysis = Modules.analysis("App", [
+            ("A.swift", """
+            protocol HasAPI {}
+            protocol HasStore {}
+            typealias Dependencies = any HasAPI & HasStore
+            final class Feature {
+                let deps: Dependencies
+                init(deps: Dependencies) { self.deps = deps }
+            }
+            protocol Fetching {}
+            typealias Services = Fetching & Hashable
+            struct Client: Services {}
+            """)
+        ])
+        let feature = try #require(Modules.type("Feature", in: analysis))
+        let client = try #require(Modules.type("Client", in: analysis))
+        let initRecord = try #require(Modules.record("init(deps:)", in: analysis))
+
+        #expect(feature.coupling.ceProtocol == 2)
+        #expect(initRecord.typeReferences.map(\.spelling).sorted() == ["HasAPI", "HasStore"])
+        #expect(client.coupling.platformNameCount == 1)
+        #expect(client.declarationTypeReferences.map(\.spelling).sorted() == ["Fetching", "Hashable"])
+    }
+
+    @Test("platform names count the type: Self in a group, a member alias, an XCTest qualifier")
+    func platformNames() {
+        let app = Modules.analysis("App", [
+            ("A.swift", """
+            import Foundation
+            extension String {
+                func padded(to width: Int) -> Self { self }
+                func trimmedCopy() -> String { self }
+            }
+            struct User {
+                typealias ID = UUID
+                let id: ID
+            }
+            """)
+        ])
+        let tests = Modules.analysis("AppTests", [
+            ("LoginTests.swift", """
+            import XCTest
+            final class LoginTests: XCTestCase {
+                func current() -> XCTest.XCTestCase { self }
+            }
+            """)
+        ])
+
+        #expect(Modules.type("String", in: app)?.coupling.platformNameCount == 2)
+        #expect(Modules.type("User", in: app)?.coupling.platformNameCount == 1)
+        #expect(Modules.type("LoginTests", in: tests)?.coupling.platformNameCount == 1)
+    }
+
+    @Test("type names in a member-level macro's arguments count")
+    func macroArguments() {
+        let analysis = Modules.analysis("App", [
+            ("A.swift", """
+            @freestanding(declaration, names: arbitrary)
+            macro Register(_ type: Any.Type) = #externalMacro(module: "AppMacros", type: "RegisterMacro")
+            struct Service {}
+            struct Container {
+                #Register(Service.self)
+            }
+            """)
+        ])
+
+        #expect(Modules.type("Container", in: analysis)?.coupling.ceTotal == 1)
+    }
 }

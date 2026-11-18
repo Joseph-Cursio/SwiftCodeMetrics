@@ -78,6 +78,34 @@ struct TypeDeclarationAccumulator {
         }
     }
 
+    /// A typealias, an associated type or a freestanding macro: names
+    /// only, never an instance member. False for anything else.
+    private mutating func readNonMember(_ decl: DeclSyntax) -> Bool {
+        if let alias = decl.as(TypeAliasDeclSyntax.self) {
+            let generics = Set(TypeSpelling.names(of: alias.genericParameterClause))
+            collect(Syntax(alias.initializer.value), kind: .typealias, isWeakOrUnowned: false, excluding: generics)
+        } else if let associated = decl.as(AssociatedTypeDeclSyntax.self) {
+            readAssociatedType(associated)
+        } else if let macro = decl.as(MacroExpansionDeclSyntax.self) {
+            readMacroArguments(macro)
+        } else {
+            return false
+        }
+        return true
+    }
+
+    /// A member-level freestanding macro's arguments are ordinary source,
+    /// so their type names count (Spec §2.7): `#Register(Service.self)`.
+    private mutating func readMacroArguments(_ macro: MacroExpansionDeclSyntax) {
+        var parts = [Syntax(macro.arguments)]
+        parts += [macro.genericArgumentClause.map(Syntax.init), macro.trailingClosure.map(Syntax.init)]
+            .compactMap(\.self)
+        parts += macro.additionalTrailingClosures.map(Syntax.init)
+        for part in parts {
+            collect(part, kind: .body, isWeakOrUnowned: false)
+        }
+    }
+
     /// The member list, descending into `#if` clauses.
     mutating func readMembers(_ members: MemberBlockItemListSyntax) {
         for item in members {
@@ -125,13 +153,7 @@ struct TypeDeclarationAccumulator {
             readVariable(variable)
         } else if let cases = decl.as(EnumCaseDeclSyntax.self) {
             readCases(cases)
-        } else if let alias = decl.as(TypeAliasDeclSyntax.self) {
-            let generics = Set(TypeSpelling.names(of: alias.genericParameterClause))
-            collect(Syntax(alias.initializer.value), kind: .typealias, isWeakOrUnowned: false, excluding: generics)
-        } else if let associated = decl.as(AssociatedTypeDeclSyntax.self) {
-            readAssociatedType(associated)
-        } else if decl.is(MacroExpansionDeclSyntax.self) == false,
-                  let modifiers = decl.asProtocol(WithModifiersSyntax.self)?.modifiers {
+        } else if readNonMember(decl) == false, let modifiers = decl.asProtocol(WithModifiersSyntax.self)?.modifiers {
             // Functions, initialisers, deinitialisers and subscripts; a
             // freestanding macro such as `#warning` is none of them.
             hasInstanceMembers = hasInstanceMembers || SyntaxFacts.isTypeLevel(modifiers) == false

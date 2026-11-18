@@ -4,7 +4,7 @@
 //
 //  Resolving a type's or extension's declaration-level names: synthetic
 //  resolvers at the declaration's position, conformances and the possible
-//  superclass (Spec §7.3, §9.1).
+//  superclass (Spec §7.3, §9.1), and the edge kinds of owned records.
 //
 
 extension TypePass {
@@ -182,5 +182,24 @@ extension TypePass {
                 : conformances,
             whereClause: fact.declaration.whereClause
         )
+    }
+
+    /// Adds the type references of the records a type owns. Only a member's
+    /// own head is a signature; a nested function's or a local accessor's
+    /// head counts like any body (Spec §2.1, §9.4).
+    func addRecordReferences(
+        _ owned: [Int],
+        groups: [MemberGroup],
+        index: TypeIndex,
+        into edges: inout TypeEdges
+    ) {
+        let memberRecords = Set(groups.filter(\.isMember).flatMap { $0.variants.values.joined() })
+        for record in owned {
+            for reference in functions[record].typeReferences {
+                let isNestedHead = reference.edgeKind == .signature && memberRecords.contains(record) == false
+                let kind = isNestedHead ? EdgeKind.body : reference.edgeKind
+                edges.add(reference, kind: kind, isWeakOrUnowned: false, familyOf: index.familyRoot(of:))
+            }
+        }
     }
 }

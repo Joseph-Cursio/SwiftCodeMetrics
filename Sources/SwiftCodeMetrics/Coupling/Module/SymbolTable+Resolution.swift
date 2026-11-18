@@ -61,17 +61,26 @@ extension SymbolTable {
             )
         }
         guard let first = resolveRoot(root, context: context, visiting: &visiting) else {
-            return resolveUndeclared(components, context: context)
+            return resolveUndeclared(components, context: context, visiting: &visiting)
         }
         return descend(from: first, through: components.dropFirst(), context: context, visiting: &visiting)
     }
 
     /// A name whose root the module does not declare.
-    private func resolveUndeclared(_ components: [String], context: ResolutionContext) -> TypeResolution {
+    private func resolveUndeclared(
+        _ components: [String],
+        context: ResolutionContext,
+        visiting: inout Set<String>
+    ) -> TypeResolution {
         // A type nested in an extension of a platform or external type keeps
         // its written path: `String.Limits`.
         if components.count > 1, let exact = visible(byPath[components] ?? [], from: context.file).first {
             return .module(exact)
+        }
+        // `String.Owner` where `extension String { typealias Owner = User }`.
+        if components.count > 1, let last = components.last,
+           let alias = groupAlias(Array(components.dropLast()), last, context: context, visiting: &visiting) {
+            return alias
         }
         return fallback(components, context: context)
     }
@@ -237,10 +246,12 @@ extension SymbolTable {
                 current = found ?? .unresolved
 
             case .platform(let name):
-                current = groupNested(name, component, file: context.file) ?? .platform(name + "." + component)
+                current = inGroup(name, component, context: context, visiting: &visiting)
+                    ?? .platform(name + "." + component)
 
             case .external(let name):
-                current = groupNested(name, component, file: context.file) ?? .external(name + "." + component)
+                current = inGroup(name, component, context: context, visiting: &visiting)
+                    ?? .external(name + "." + component)
 
             case .ambiguous, .genericParameter, .opaqueAlias, .unresolved:
                 return current
@@ -322,19 +333,32 @@ extension SymbolTable {
         return descend(from: start, through: rest.dropFirst(), context: context, visiting: &visiting)
     }
 
-    /// The module type nested in the group for the platform or external
-    /// type `name`: `Double.Scale` for `extension Double { enum Scale }`.
-    /// Never one nested in a module type that shadows the name.
-    private func groupNested(_ name: String, _ component: String, file: String) -> TypeResolution? {
+    /// A module type nested in, or a typealias declared in, the group for
+    /// the platform or external type `name`.
+    private func inGroup(
+        _ name: String,
+        _ component: String,
+        context: ResolutionContext,
+        visiting: inout Set<String>
+    ) -> TypeResolution? {
         let base = name.split(separator: ".").map(String.init)
-        guard let root = base.first, visible(byPath[[root]] ?? [], from: file).isEmpty else {
+        return groupNested(name, component, file: context.file)
+            ?? groupAlias(base, component, context: context, visiting: &visiting)
+    }
+
+    /// A member typealias declared in the extension group keyed `base`,
+    /// expanded: `String.Owner` for `extension String { typealias Owner = User }`.
+    private func groupAlias(
+        _ base: [String],
+        _ name: String,
+        context: ResolutionContext,
+        visiting: inout Set<String>
+    ) -> TypeResolution? {
+        guard let group = extensionGroups[base],
+              let found = entries[group]?.alias(named: name, from: context.file) else {
             return nil
         }
-        let nested = visible(byPath[base + [component]] ?? [], from: file)
-        guard let only = nested.first else {
-            return nil
-        }
-        return nested.count == 1 ? .module(only) : .ambiguous
+        return found.isConflicting ? .ambiguous : expand(found.alias, context: context, visiting: &visiting)
     }
 
     /// A name the module does not declare.

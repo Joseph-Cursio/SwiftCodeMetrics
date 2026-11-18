@@ -79,6 +79,41 @@ struct TypeReviewRoundFiveCouplingTests {
         #expect(sub.cohesion.inheritedMemberRefs == ["value"])
     }
 
+    @Test("edges: nested heads are body; group aliases, alias candidates, selector views, inline arrays")
+    func edgesAndNames() throws {
+        let analysis = Modules.analysis("App", [
+            ("A.swift", """
+            import SwiftUI
+            struct Cell {}
+            struct User {}
+            struct Report {
+                func render() -> String {
+                    func format(_ cell: Cell) -> String { "" }
+                    return ""
+                }
+            }
+            extension String { typealias Owner = User }
+            struct Card { let owner: String.Owner }
+            protocol HasAPI {}
+            protocol HasStore {}
+            typealias Deps = HasAPI & HasStore
+            struct Registry { func register() -> Any.Type { Deps.self } }
+            struct Row: SwiftUI::View { var body: some SwiftUI::View { Text("row") } }
+            struct Screen { let row: Row }
+            struct Buffer { var cells: [4 of Cell] }
+            """)
+        ])
+        let report = analysis.typeEdges.first { $0.source.path == ["Report"] }
+        let card = try #require(Modules.type("Card", in: analysis))
+
+        #expect(report?.kinds == [.body])
+        #expect(card.coupling.ceTotal == 1)
+        #expect(card.coupling.platformNameCount == 0)
+        #expect(Modules.type("Registry", in: analysis)?.coupling.ceProtocol == 2)
+        #expect(Modules.type("Screen", in: analysis)?.coupling.ceView == 1)
+        #expect(Modules.type("Buffer", in: analysis)?.coupling.platformNameCount == 1)
+    }
+
     @Test("another module's selector is never shadowed by a module type named like that module")
     func foreignSelectors() throws {
         let bridge = ("Bridge.swift", """

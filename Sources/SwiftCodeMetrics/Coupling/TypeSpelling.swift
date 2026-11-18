@@ -38,6 +38,9 @@ enum TypeSpelling {
         if type.is(ArrayTypeSyntax.self) {
             return SpelledType(components: ["Array"], moduleSelector: nil)
         }
+        if type.is(InlineArrayTypeSyntax.self) {
+            return SpelledType(components: ["InlineArray"], moduleSelector: nil)
+        }
         if type.is(DictionaryTypeSyntax.self) {
             return SpelledType(components: ["Dictionary"], moduleSelector: nil)
         }

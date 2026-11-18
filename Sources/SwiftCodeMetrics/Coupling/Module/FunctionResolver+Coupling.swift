@@ -92,15 +92,29 @@ extension FunctionResolver {
         if let reference = typeReference(for: name) {
             return [reference]
         }
-        guard name.isCandidate == false, name.qualifierMustBeModule == false,
-              case .opaqueAlias = table.resolve(name.type, from: context) else {
+        guard name.qualifierMustBeModule == false, case .opaqueAlias = table.resolve(name.type, from: context) else {
             return []
+        }
+        // `Deps.self` expands too, when the candidate is the alias, not a value.
+        if name.isCandidate {
+            guard name.type.moduleSelector != nil
+                || isTypeCandidate(classifyCandidate(name.type.spelling, lookup: name.lookup)) else {
+                return []
+            }
         }
         return table.compositionLeaves(of: name.type, from: context).compactMap { leaf in
             var member = name
             member.type = leaf.type
             return reference(member, resolution: table.resolve(leaf.type, from: leaf.position))
         }
+    }
+
+    /// Whether a candidate classifies as a type.
+    private func isTypeCandidate(_ candidate: CandidateClass) -> Bool {
+        if case .type = candidate {
+            return true
+        }
+        return false
     }
 
     /// One type name, resolved; nil for generic parameters and names that

@@ -260,6 +260,11 @@ final class ReferenceCollector: OwnBodyVisitor {
         return .visitChildren
     }
 
+    override func visit(_ node: InlineArrayTypeSyntax) -> SyntaxVisitorContinueKind {
+        addType(TypeSyntax(node))
+        return .visitChildren
+    }
+
     override func visit(_ node: DictionaryTypeSyntax) -> SyntaxVisitorContinueKind {
         addType(TypeSyntax(node))
         return .visitChildren

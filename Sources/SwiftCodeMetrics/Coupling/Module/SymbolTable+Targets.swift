@@ -25,7 +25,8 @@ extension SymbolTable {
             importsFoundation: false,
             chain: parents,
             genericParameters: entries[key]?.genericParameters ?? [],
-            localOwners: key.localTo.map { [$0] } ?? []
+            localOwners: entries[key]?.declarations.first.map { $0.visibleRecords.reversed() }
+                ?? key.localTo.map { [$0] } ?? []
         )
     }
 

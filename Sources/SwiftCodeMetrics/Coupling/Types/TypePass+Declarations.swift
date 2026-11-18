@@ -15,7 +15,7 @@ extension TypePass {
                 typePath: fact.path,
                 extensionPathLength: fact.extensionPathLength,
                 localOwner: fact.localTo,
-                enclosingRecords: fact.localTo.map { [$0] } ?? [],
+                enclosingRecords: fact.visibleRecords,
                 genericParameters: fact.genericParameters + fact.associatedTypes,
                 isTypeLevel: false,
                 file: fact.file
@@ -37,7 +37,7 @@ extension TypePass {
                 typePath: parentPath,
                 extensionPathLength: isTopLevelLocal ? 0 : min(fact.extensionPathLength, parentPath.count),
                 localOwner: isTopLevelLocal ? fact.enclosingLocalOwner : fact.localTo,
-                enclosingRecords: fact.localTo.map { [$0] } ?? [],
+                enclosingRecords: fact.visibleRecords,
                 genericParameters: fact.genericParameters + fact.associatedTypes,
                 isTypeLevel: false,
                 file: fact.file

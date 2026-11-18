@@ -130,4 +130,33 @@ struct TypeReviewRoundSixTests {
         #expect(Modules.type("Canvas", in: analysis)?.coupling.ceTotal == 1)
         #expect(Modules.type("Shape", in: analysis)?.coupling.caWithinModule == 2)
     }
+
+    @Test("local types see outer functions' locals; unresolved extensions see the types around them")
+    func lookupsAroundLocalsAndUnresolved() throws {
+        let analysis = Modules.analysis("App", [
+            ("A.swift", """
+            func outer() {
+                class Base {}
+                func inner() {
+                    class Derived: Base {
+                        let peer: Base? = nil
+                    }
+                    _ = Derived()
+                }
+                inner()
+            }
+            struct Feature { struct Helper {} }
+            extension Feature.State {
+                func make() -> Helper { Helper() }
+            }
+            """)
+        ])
+        let derived = try #require(analysis.types.first { $0.key.path == ["Derived"] })
+        let make = try #require(Modules.record("make()", in: analysis))
+
+        #expect(derived.superclass?.path == ["Base"])
+        #expect(derived.possibleSuperclass == nil)
+        #expect(derived.coupling.externalNameCount == 0)
+        #expect(make.typeReferences.allSatisfy { $0.target?.path == ["Feature", "Helper"] })
+    }
 }

@@ -121,8 +121,8 @@ extension SymbolTable {
                 return .module(local)
             }
         }
-        let outerChain = context.chain.dropFirst(localChain.count)
-        if let found = chainType(name, in: outerChain, context: context, visiting: &visiting) {
+        let outerChain = context.chain.dropFirst(localChain.count) + context.enclosingChain
+        if let found = chainType(name, in: outerChain[...], context: context, visiting: &visiting) {
             return found
         }
         let tops = visible(byPath[[name]] ?? [], from: context.file)

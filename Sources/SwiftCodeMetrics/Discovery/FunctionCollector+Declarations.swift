@@ -44,7 +44,8 @@ extension FunctionCollector {
             firstEntryCount: firstEntry.count,
             members: facts.members,
             typealiases: facts.typealiases,
-            declaration: TypeDeclarationReader.read(node, writtenName: node.name.text)
+            declaration: TypeDeclarationReader.read(node, writtenName: node.name.text),
+            enclosingRecords: lexical.enclosingRecords
         ))
         pushType(
             name: node.name.text,

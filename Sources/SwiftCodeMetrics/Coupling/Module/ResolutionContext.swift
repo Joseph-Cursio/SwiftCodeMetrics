@@ -22,4 +22,7 @@ struct ResolutionContext {
     let genericParameters: Set<String>
     /// Records that own visible local types, nearest first.
     let localOwners: [MemberKey]
+    /// For a function whose own type is unresolved: the types around it,
+    /// searched after the chain.
+    var enclosingChain: [TypeKey] = []
 }

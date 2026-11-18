@@ -38,4 +38,12 @@ struct TypeFact: Codable, Hashable {
     var typealiases: [TypealiasFact]
     /// Declaration-level facts for type metrics.
     var declaration: TypeDeclarationFacts
+    /// For a local type: every enclosing record, nearest last, so a type in
+    /// a nested function sees the outer function's local types too.
+    var enclosingRecords: [MemberKey] = []
+
+    /// The records whose local types its declaration sees, nearest last.
+    var visibleRecords: [MemberKey] {
+        enclosingRecords.isEmpty ? (localTo.map { [$0] } ?? []) : enclosingRecords
+    }
 }

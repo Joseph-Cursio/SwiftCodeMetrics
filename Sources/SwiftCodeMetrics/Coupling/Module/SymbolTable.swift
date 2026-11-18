@@ -107,7 +107,10 @@ final class SymbolTable {
         let spelled = SpelledType(components: path, moduleSelector: nil)
         let resolution = resolve(spelled, from: qualifierContext(file: file))
         // A type nested in a group resolves to the module type: `Swift.String.Limits`, `Celsius.Scale`.
-        let resolved = resolution.moduleKey ?? groupKey(for: path, from: file)
+        // A path that is an unresolved extension from this file names no
+        // group, even one another file registered under the same spelling.
+        let resolved = resolution.moduleKey
+            ?? (isMissingNestedType(path, from: file) ? nil : groupKey(for: path, from: file))
         pathMemo[file, default: [:]][path] = resolved
         return resolved
     }

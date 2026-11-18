@@ -48,4 +48,28 @@ struct TypeReviewRoundFiveTests {
         #expect(config.extensions.isEmpty)
         #expect(config.sizes.nom == 0)
     }
+
+    @Test("an unresolved extension's records join no group another file spells the same way")
+    func unresolvedExtensionRecords() throws {
+        let analysis = Modules.analysis("App", [
+            ("A.swift", """
+            private struct Feature { var count = 0 }
+            extension Feature.State {
+                func summary(_ verbose: Bool) -> String {
+                    if verbose { return "long" }
+                    return "short"
+                }
+            }
+            """),
+            ("B.swift", """
+            import Lib
+            extension Feature.State { func label() -> String { "b" } }
+            """)
+        ])
+        let state = try #require(Self.group("Feature.State", in: analysis))
+
+        #expect(analysis.unresolvedExtensions.count == 1)
+        #expect(state.sizes.nom == 1)
+        #expect(state.wmc.cognitive == 0)
+    }
 }

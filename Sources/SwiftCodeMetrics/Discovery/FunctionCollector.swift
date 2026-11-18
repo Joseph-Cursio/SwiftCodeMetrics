@@ -137,12 +137,15 @@ final class FunctionCollector: SyntaxVisitor {
 
     /// A stored property's or global's initial value: a record when its C
     /// or D is non-zero, otherwise a key context (Spec §2.1).
+    /// An enum case's associated-value default is a key context too.
     override func visit(_ node: InitializerClauseSyntax) -> SyntaxVisitorContinueKind {
         if let binding = node.parent?.as(PatternBindingSyntax.self),
            let variable = SyntaxFacts.variable(of: binding),
            SyntaxFacts.isMemberOrGlobal(variable),
            isInsideRecordScope == false {
             addInitialValue(node, binding: binding, variable: variable)
+        } else if isInsideRecordScope == false, let declaration = DeclarationRenderer.caseDefaultContext(node) {
+            pushContext(declaration: declaration, isFileScoped: false, owner: node.id)
         }
         return .visitChildren
     }
@@ -151,16 +154,14 @@ final class FunctionCollector: SyntaxVisitor {
         popScope(owner: node.id)
     }
 
-    /// A member variable's attribute arguments (`@Clamped({ ... })`) are a
-    /// key context, like an initial value: functions in them are not members.
+    /// A member variable's or a type's own attribute arguments
+    /// (`@Clamped({ ... })`, `@Suite(.enabled(if: { ... }()))`) are a key
+    /// context, like an initial value: functions in them are not members.
+    /// Attributes inside `#if` count; the outermost list opens the context.
     override func visit(_ node: AttributeListSyntax) -> SyntaxVisitorContinueKind {
-        if let variable = node.parent?.as(VariableDeclSyntax.self), SyntaxFacts.isMemberOrGlobal(variable),
-           isInsideRecordScope == false, node.contains(where: { $0.as(AttributeSyntax.self)?.arguments != nil }) {
-            pushContext(
-                declaration: DeclarationRenderer.attributeContext(variable),
-                isFileScoped: SyntaxFacts.isFileScoped(variable.modifiers),
-                owner: node.id
-            )
+        if isInsideRecordScope == false, SyntaxFacts.hasAttributeArguments(node),
+           let attributes = DeclarationRenderer.attributeContext(of: node) {
+            pushContext(declaration: attributes.declaration, isFileScoped: attributes.isFileScoped, owner: node.id)
         }
         return .visitChildren
     }

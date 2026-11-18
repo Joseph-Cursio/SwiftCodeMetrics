@@ -93,4 +93,48 @@ struct TypeReviewRoundFiveTests {
         #expect(state.sizes.nom == 1)
         #expect(state.wmc.cognitive == 0)
     }
+
+    @Test("functions in a type's attributes, #if attribute lists and case defaults are not members")
+    func attributeAndDefaultContexts() {
+        let analysis = Modules.analysis("App", [
+            ("A.swift", """
+            import Testing
+            @propertyWrapper
+            struct Clamped {
+                var wrappedValue: Int
+                init(wrappedValue: Int, _ limit: () -> Int) { self.wrappedValue = wrappedValue }
+            }
+            struct Settings {
+                #if DEBUG
+                @Clamped({
+                    func cap() -> Int { 10 }
+                    return cap()
+                })
+                #endif
+                var volume: Int = 3
+                func reset() {}
+            }
+            @Suite(.enabled(if: { func check() -> Bool { true }; return check() }()))
+            struct ParserTests {
+                var input = ""
+                func parse() -> Bool { input.isEmpty }
+            }
+            enum Shape {
+                case circle(radius: Double = {
+                    func base() -> Double { 1.5 }
+                    return base() * 2
+                }())
+                case square
+            }
+            """)
+        ])
+        let settings = Modules.type("Settings", in: analysis)
+        let parser = Modules.type("ParserTests", in: analysis)
+
+        #expect(settings?.sizes.nom == 1)
+        #expect(settings?.sizes.instanceMembers == 1)
+        #expect(parser?.sizes.nom == 1)
+        #expect(parser?.cohesion.nodeCount == 1)
+        #expect(Modules.type("Shape", in: analysis)?.sizes.nom == 0)
+    }
 }

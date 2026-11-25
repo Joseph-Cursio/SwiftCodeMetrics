@@ -78,25 +78,30 @@ struct CorpusTypeTests {
         #expect(channel.cohesion.components.first?.attributes.contains("socket") == true)
     }
 
-    @Test("SwiftStats FunctionCollector: LCOM4 1, two isolated, Ce 14 with 3 namespaces", .enabled(if: exists(stats)))
+    // §12.7's hand count (2026-11-17) gave NOA 8, NOM 55, |M| 46, Ce 14 = 11 + 3.
+    // SwiftStats' collector grew on 2026-11-19..21 (test linking, coverage mapping,
+    // body lines); the numbers below are measured at SwiftStats fff063a (2026-11-22).
+    // LCOM4 and the isolated members are unchanged.
+    @Test("SwiftStats FunctionCollector: LCOM4 1, two isolated, Ce 21 with 6 namespaces", .enabled(if: exists(stats)))
     func functionCollector() throws {
         let analysis = Modules.analysis("SwiftStatsCore", Resolutions.files(under: Self.stats))
         let collector = try #require(Modules.type("FunctionCollector", in: analysis))
 
-        #expect(collector.sizes.noa == 8)
-        #expect(collector.sizes.nom == 55)
-        #expect(collector.cohesion.nodeCount == 46)
+        #expect(collector.sizes.noa == 11)
+        #expect(collector.sizes.nom == 60)
+        #expect(collector.cohesion.nodeCount == 47)
         #expect(collector.cohesion.lcom4 == 1)
         #expect(collector.cohesion.isolatedMembers.map(Modules.memberName) == [
             "func visit(_: MacroExpansionExprSyntax) -> SyntaxVisitorContinueKind",
             "func visit(_: MacroExpansionDeclSyntax) -> SyntaxVisitorContinueKind"
         ])
-        #expect(collector.coupling.ceTotal == 14)
-        #expect(collector.coupling.ceConcrete == 11)
-        #expect(collector.coupling.ceNamespace == 3)
+        #expect(collector.coupling.ceTotal == 21)
+        #expect(collector.coupling.ceConcrete == 15)
+        #expect(collector.coupling.ceNamespace == 6)
         let namespaces = analysis.typeEdges.filter { $0.source == collector.key && $0.targetClass == .namespace }
         #expect(Set(namespaces.map { $0.target.path.joined(separator: ".") }) == [
-            "BodyHash", "CanonicalText", "DeclarationRenderer"
+            "AttributeFacts", "BodyHash", "CanonicalText",
+            "DeclarationFacts", "DeclarationRenderer", "MemberSelector"
         ])
     }
 
